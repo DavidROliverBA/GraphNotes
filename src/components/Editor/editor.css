@@ -1,0 +1,209 @@
+/* src/components/Editor/editor.css */
+
+/* Tiptap editor styles */
+.ProseMirror {
+  @apply min-h-full outline-none;
+}
+
+.ProseMirror > * + * {
+  @apply mt-3;
+}
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  @apply text-gray-500 float-left h-0 pointer-events-none;
+  content: attr(data-placeholder);
+}
+
+/* Headings */
+.ProseMirror h1 {
+  @apply text-3xl font-bold text-editor-text mt-6 mb-4;
+}
+
+.ProseMirror h2 {
+  @apply text-2xl font-bold text-editor-text mt-5 mb-3;
+}
+
+.ProseMirror h3 {
+  @apply text-xl font-semibold text-editor-text mt-4 mb-2;
+}
+
+.ProseMirror h4 {
+  @apply text-lg font-semibold text-editor-text mt-3 mb-2;
+}
+
+.ProseMirror h5 {
+  @apply text-base font-semibold text-editor-text mt-2 mb-1;
+}
+
+.ProseMirror h6 {
+  @apply text-sm font-semibold text-gray-400 mt-2 mb-1;
+}
+
+/* Paragraphs */
+.ProseMirror p {
+  @apply text-editor-text leading-relaxed;
+}
+
+/* Links */
+.ProseMirror a {
+  @apply text-accent-primary underline hover:text-accent-secondary;
+}
+
+/* Lists */
+.ProseMirror ul {
+  @apply list-disc pl-6 my-2;
+}
+
+.ProseMirror ol {
+  @apply list-decimal pl-6 my-2;
+}
+
+.ProseMirror li {
+  @apply my-1;
+}
+
+.ProseMirror li > p {
+  @apply my-0;
+}
+
+/* Task lists */
+.ProseMirror ul[data-type="taskList"] {
+  @apply list-none pl-0;
+}
+
+.ProseMirror ul[data-type="taskList"] li {
+  @apply flex items-start gap-2;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label {
+  @apply flex items-center;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"] {
+  @apply w-4 h-4 rounded border-gray-500 bg-transparent cursor-pointer;
+  @apply checked:bg-accent-primary checked:border-accent-primary;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  @apply line-through text-gray-500;
+}
+
+/* Blockquote */
+.ProseMirror blockquote {
+  @apply border-l-4 border-accent-primary pl-4 my-4 italic text-gray-400;
+}
+
+/* Code */
+.ProseMirror code {
+  @apply bg-sidebar-hover text-accent-secondary px-1.5 py-0.5 rounded font-mono text-sm;
+}
+
+.ProseMirror pre {
+  @apply bg-sidebar-bg rounded-lg p-4 my-4 overflow-x-auto;
+}
+
+.ProseMirror pre code {
+  @apply bg-transparent p-0 text-editor-text;
+}
+
+/* Syntax highlighting */
+.ProseMirror pre .hljs-comment,
+.ProseMirror pre .hljs-quote {
+  @apply text-gray-500 italic;
+}
+
+.ProseMirror pre .hljs-keyword,
+.ProseMirror pre .hljs-selector-tag,
+.ProseMirror pre .hljs-addition {
+  @apply text-accent-secondary;
+}
+
+.ProseMirror pre .hljs-number,
+.ProseMirror pre .hljs-string,
+.ProseMirror pre .hljs-meta .hljs-meta-string,
+.ProseMirror pre .hljs-literal,
+.ProseMirror pre .hljs-doctag,
+.ProseMirror pre .hljs-regexp {
+  @apply text-accent-success;
+}
+
+.ProseMirror pre .hljs-title,
+.ProseMirror pre .hljs-section,
+.ProseMirror pre .hljs-name,
+.ProseMirror pre .hljs-selector-id,
+.ProseMirror pre .hljs-selector-class {
+  @apply text-accent-primary;
+}
+
+.ProseMirror pre .hljs-attribute,
+.ProseMirror pre .hljs-attr,
+.ProseMirror pre .hljs-variable,
+.ProseMirror pre .hljs-template-variable,
+.ProseMirror pre .hljs-class .hljs-title,
+.ProseMirror pre .hljs-type {
+  @apply text-accent-warning;
+}
+
+.ProseMirror pre .hljs-symbol,
+.ProseMirror pre .hljs-bullet,
+.ProseMirror pre .hljs-subst,
+.ProseMirror pre .hljs-meta,
+.ProseMirror pre .hljs-meta .hljs-keyword,
+.ProseMirror pre .hljs-selector-attr,
+.ProseMirror pre .hljs-selector-pseudo,
+.ProseMirror pre .hljs-link {
+  @apply text-accent-error;
+}
+
+.ProseMirror pre .hljs-built_in,
+.ProseMirror pre .hljs-deletion {
+  @apply text-accent-error;
+}
+
+/* Horizontal rule */
+.ProseMirror hr {
+  @apply border-t border-sidebar-hover my-6;
+}
+
+/* Images */
+.ProseMirror img {
+  @apply max-w-full h-auto rounded-lg my-4;
+}
+
+/* Tables */
+.ProseMirror table {
+  @apply border-collapse w-full my-4;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  @apply border border-sidebar-hover px-3 py-2 text-left;
+}
+
+.ProseMirror th {
+  @apply bg-sidebar-hover font-semibold;
+}
+
+/* Wikilink styles */
+.wikilink,
+.wikilink-detected {
+  @apply text-accent-primary cursor-pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.wikilink:hover,
+.wikilink-detected:hover {
+  @apply text-accent-secondary bg-sidebar-hover rounded;
+}
+
+/* Selection */
+.ProseMirror ::selection {
+  @apply bg-accent-primary/30;
+}
+
+/* Focus ring for editor */
+.ProseMirror-focused {
+  @apply outline-none;
+}

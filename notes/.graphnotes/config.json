@@ -1,0 +1,22 @@
+{
+  "version": "1.0.0",
+  "deviceId": null,
+  "created": null,
+  "settings": {
+    "theme": "dark",
+    "editorFontSize": 16,
+    "graphSettings": {
+      "defaultLayout": "force-directed",
+      "showLabels": true,
+      "nodeSize": 10
+    },
+    "defaultRelationshipTypes": [
+      "relates to",
+      "supports",
+      "contradicts",
+      "extends",
+      "references",
+      "depends on"
+    ]
+  }
+}

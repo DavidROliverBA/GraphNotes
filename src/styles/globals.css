@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html, body, #root {
+    @apply h-full w-full m-0 p-0 overflow-hidden;
+    @apply bg-editor-bg text-editor-text;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-sidebar-hover rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-sidebar-active;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .panel {
+    @apply flex flex-col h-full;
+  }
+
+  .panel-header {
+    @apply px-4 py-3 border-b border-sidebar-hover text-sm font-medium;
+  }
+
+  .panel-content {
+    @apply flex-1 overflow-auto;
+  }
+
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-accent-primary text-sidebar-bg hover:bg-accent-primary/90;
+  }
+
+  .btn-secondary {
+    @apply bg-sidebar-hover text-editor-text hover:bg-sidebar-active;
+  }
+}
+
+/* Custom utility styles */
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag-region {
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* Tippy.js tooltip styles */
+.tippy-box {
+  @apply bg-transparent;
+}
+
+.tippy-content {
+  @apply p-0;
+}
