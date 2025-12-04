@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 
 export type ViewMode = 'editor' | 'graph' | 'split';
-export type SidebarTab = 'files' | 'search';
+export type SidebarTab = 'files' | 'search' | 'sync';
 
 interface UIState {
   // Vault state

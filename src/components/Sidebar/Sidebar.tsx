@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { useNotes } from '../../hooks/useNotes';
 import FileTree from './FileTree';
 import SearchPanel from './SearchPanel';
+import { SyncStatusPanel } from '../sync/SyncStatusPanel';
 
 const Sidebar: React.FC = () => {
   const {
@@ -105,11 +106,23 @@ const Sidebar: React.FC = () => {
         >
           Search
         </button>
+        <button
+          onClick={() => setSidebarTab('sync')}
+          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+            sidebarTab === 'sync'
+              ? 'text-accent-primary border-b-2 border-accent-primary'
+              : 'text-gray-400 hover:text-editor-text'
+          }`}
+        >
+          Sync
+        </button>
       </nav>
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        {sidebarTab === 'files' ? <FileTree /> : <SearchPanel />}
+        {sidebarTab === 'files' && <FileTree />}
+        {sidebarTab === 'search' && <SearchPanel />}
+        {sidebarTab === 'sync' && <SyncStatusPanel />}
       </div>
 
       {/* Sidebar footer */}

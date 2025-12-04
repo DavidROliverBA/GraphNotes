@@ -6,7 +6,6 @@ import { SigmaContainer } from '@react-sigma/core';
 import '@react-sigma/core/lib/style.css';
 import { useGraphStore } from '../../stores/graphStore';
 import { useUIStore } from '../../stores/uiStore';
-import { useGraph } from '../../hooks/useGraph';
 import GraphView from '../Graph/GraphView';
 import GraphControls, { GraphFilters } from '../Graph/GraphControls';
 import NodeTooltip from '../Graph/NodeTooltip';
@@ -66,13 +65,9 @@ class GraphErrorBoundary extends Component<{ children: ReactNode; onReset: () =>
 const GraphPanel: React.FC = () => {
   const { nodes, edges } = useGraphStore();
   const { viewMode, setViewMode, selectedNoteId } = useUIStore();
-  const { getGraphologyInstance } = useGraph();
   const [graphMode, setGraphMode] = useState<GraphMode>('full');
   const [graphKey, setGraphKey] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Track previous values to detect actual changes
-  const prevNodeCountRef = useRef(0);
-  const prevEdgeCountRef = useRef(0);
 
   const nodeCount = nodes.size;
   const edgeCount = edges.size;
@@ -86,32 +81,42 @@ const GraphPanel: React.FC = () => {
     setGraphKey((prev) => prev + 1);
   }, []);
 
-  // Build the sigma graph - only rebuild when graph data actually changes
+  // Build the sigma graph directly from store data (more robust than singleton)
   const sigmaGraph = useMemo(() => {
     if (nodeCount === 0) {
-      prevNodeCountRef.current = 0;
-      prevEdgeCountRef.current = 0;
       return null;
     }
 
-    const sourceGraph = getGraphologyInstance();
     const newGraph = new Graph({ type: 'directed', multi: true });
+
+    // Build adjacency map for local mode and degree calculation
+    const adjacencyMap = new Map<string, Set<string>>();
+    for (const nodeId of nodes.keys()) {
+      adjacencyMap.set(nodeId, new Set());
+    }
+    for (const edge of edges.values()) {
+      adjacencyMap.get(edge.source)?.add(edge.target);
+      adjacencyMap.get(edge.target)?.add(edge.source);
+    }
 
     // Determine which nodes to include based on graph mode
     let nodesToInclude: Set<string>;
 
-    if (graphMode === 'local' && selectedNoteId && sourceGraph.hasNode(selectedNoteId)) {
+    if (graphMode === 'local' && selectedNoteId && nodes.has(selectedNoteId)) {
       // Local mode: only include selected node and its neighbors
       nodesToInclude = new Set<string>();
       nodesToInclude.add(selectedNoteId);
 
       // Add all neighbors (both in and out)
-      sourceGraph.forEachNeighbor(selectedNoteId, (neighborId) => {
-        nodesToInclude.add(neighborId);
-      });
+      const neighbors = adjacencyMap.get(selectedNoteId);
+      if (neighbors) {
+        for (const neighborId of neighbors) {
+          nodesToInclude.add(neighborId);
+        }
+      }
     } else {
       // Full mode: include all nodes
-      nodesToInclude = new Set(sourceGraph.nodes());
+      nodesToInclude = new Set(nodes.keys());
     }
 
     if (nodesToInclude.size === 0) {
@@ -121,46 +126,44 @@ const GraphPanel: React.FC = () => {
     // Calculate max degree for sizing (within included nodes)
     let maxDegree = 1;
     nodesToInclude.forEach((nodeId) => {
-      const degree = sourceGraph.degree(nodeId);
+      const degree = adjacencyMap.get(nodeId)?.size ?? 0;
       if (degree > maxDegree) maxDegree = degree;
     });
 
-    // Copy nodes with positions and sizes
+    // Add nodes with positions and sizes
     nodesToInclude.forEach((nodeId) => {
-      const attributes = sourceGraph.getNodeAttributes(nodeId);
-      const degree = sourceGraph.degree(nodeId);
+      const node = nodes.get(nodeId);
+      if (!node) return;
+
+      const degree = adjacencyMap.get(nodeId)?.size ?? 0;
       const normalizedSize =
         NODE_SIZE_MIN + (degree / maxDegree) * (NODE_SIZE_MAX - NODE_SIZE_MIN);
 
       newGraph.addNode(nodeId, {
-        label: attributes.label || nodeId,
+        label: node.label || nodeId,
         x: Math.random() * 100 - 50,
         y: Math.random() * 100 - 50,
         size: normalizedSize,
-        color: attributes.colour || DEFAULT_NODE_COLOUR,
+        color: node.colour || DEFAULT_NODE_COLOUR,
       });
     });
 
-    // Copy edges (only between included nodes)
-    sourceGraph.forEachEdge((edgeId, attributes, source, target) => {
-      if (newGraph.hasNode(source) && newGraph.hasNode(target)) {
-        newGraph.addEdgeWithKey(edgeId, source, target, {
-          label: attributes.name,
-          size: attributes.style?.width ?? 1,
-          color: attributes.style?.colour || getEdgeColour(attributes.name),
+    // Add edges (only between included nodes)
+    for (const [edgeId, edge] of edges) {
+      if (newGraph.hasNode(edge.source) && newGraph.hasNode(edge.target)) {
+        newGraph.addEdgeWithKey(edgeId, edge.source, edge.target, {
+          label: edge.name,
+          size: edge.style?.width ?? 1,
+          color: edge.style?.colour || getEdgeColour(edge.name),
         });
       }
-    });
-
-    // Track that we've processed this data
-    prevNodeCountRef.current = nodeCount;
-    prevEdgeCountRef.current = edgeCount;
+    }
 
     return newGraph;
-  }, [nodeCount, edgeCount, getGraphologyInstance, graphMode, selectedNoteId]);
+  }, [nodes, edges, graphMode, selectedNoteId]);
 
   // Only show graph when we have valid data
-  const shouldShowGraph = sigmaGraph && nodeCount > 0 && containerRef.current;
+  const shouldShowGraph = sigmaGraph && sigmaGraph.order > 0;
 
   return (
     <div className="flex flex-col h-full">

@@ -62,11 +62,7 @@ const WikilinkList = forwardRef<WikilinkListRef, WikilinkSuggestionProps>(
     }));
 
     if (props.items.length === 0) {
-      return (
-        <div className="bg-sidebar-bg border border-sidebar-hover rounded-lg shadow-xl p-3 text-gray-400 text-sm">
-          No notes found
-        </div>
-      );
+      return null;
     }
 
     return (

@@ -1,11 +1,25 @@
 // src/hooks/useNotes.ts
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { useNoteStore } from '../stores/noteStore';
 import { readFile, writeFile, getFileTree } from '../lib/tauri/commands';
 import { parseNote, createEmptyNote, serializeNote } from '../lib/notes/noteParser';
 import { Note } from '../lib/notes/types';
+import { getEventLog, EventLog } from '../lib/sync/EventLog';
+
+/**
+ * Simple hash function for content change detection
+ */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(16);
+}
 
 export function useNotes() {
   const { vaultPath } = useUIStore();
@@ -19,6 +33,30 @@ export function useNotes() {
     setIsLoading,
     setError,
   } = useNoteStore();
+
+  // Event log reference for sync
+  const eventLogRef = useRef<EventLog | null>(null);
+
+  // Initialize event log when vault changes
+  useEffect(() => {
+    if (!vaultPath) {
+      eventLogRef.current = null;
+      return;
+    }
+
+    const initEventLog = async () => {
+      try {
+        const eventLog = getEventLog(vaultPath);
+        await eventLog.init();
+        eventLogRef.current = eventLog;
+        console.log('[useNotes] Event log initialized');
+      } catch (error) {
+        console.error('[useNotes] Failed to initialize event log:', error);
+      }
+    };
+
+    initEventLog();
+  }, [vaultPath]);
 
   /**
    * Load all notes from the vault
@@ -113,6 +151,11 @@ export function useNotes() {
       await writeFile(fullPath, content);
       addNote(note);
 
+      // Log event for sync
+      if (eventLogRef.current) {
+        await eventLogRef.current.logNoteCreated(note.id, filepath, content);
+      }
+
       return note;
     } catch (err) {
       console.error(`Failed to create note: ${filepath}`, err);
@@ -129,15 +172,25 @@ export function useNotes() {
     const fullPath = `${vaultPath}/${note.filepath}`;
 
     try {
+      // Get previous content hash for conflict detection
+      const existingNote = notes.get(note.id);
+      const previousHash = existingNote ? simpleHash(existingNote.rawContent) : '';
+
       const content = serializeNote(note);
       await writeFile(fullPath, content);
       updateNote(note.id, { rawContent: content });
+
+      // Log event for sync
+      if (eventLogRef.current) {
+        await eventLogRef.current.logNoteUpdated(note.id, previousHash, content);
+      }
+
       return true;
     } catch (err) {
       console.error(`Failed to save note: ${note.filepath}`, err);
       return false;
     }
-  }, [vaultPath, updateNote]);
+  }, [vaultPath, notes, updateNote]);
 
   /**
    * Delete a note
@@ -153,6 +206,12 @@ export function useNotes() {
       const fullPath = `${vaultPath}/${note.filepath}`;
       await deleteFile(fullPath);
       removeNoteFromStore(noteId);
+
+      // Log event for sync
+      if (eventLogRef.current) {
+        await eventLogRef.current.logNoteDeleted(noteId, note.filepath);
+      }
+
       return true;
     } catch (err) {
       console.error(`Failed to delete note: ${note.filepath}`, err);

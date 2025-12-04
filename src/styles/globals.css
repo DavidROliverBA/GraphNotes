@@ -2,11 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Default CSS variables (Dark theme - will be overridden by useTheme) */
+:root {
+  /* Sidebar */
+  --sidebar-bg: #1e1e2e;
+  --sidebar-hover: #313244;
+  --sidebar-active: #45475a;
+
+  /* Editor */
+  --editor-bg: #181825;
+  --editor-text: #cdd6f4;
+
+  /* Graph */
+  --graph-bg: #11111b;
+  --graph-node: #89b4fa;
+  --graph-edge: #6c7086;
+
+  /* Accent colors */
+  --accent-primary: #89b4fa;
+  --accent-secondary: #f5c2e7;
+  --accent-success: #a6e3a1;
+  --accent-warning: #fab387;
+  --accent-error: #f38ba8;
+
+  /* Text colors */
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+
+  /* Borders */
+  --border: #313244;
+  --border-hover: #45475a;
+
+  /* Typography */
+  --editor-font-size: 16px;
+  --editor-line-height: 1.6;
+  --editor-font-family: 'JetBrains Mono', Menlo, Monaco, monospace;
+  --ui-font-size: 14px;
+}
+
 /* Custom base styles */
 @layer base {
   html, body, #root {
     @apply h-full w-full m-0 p-0 overflow-hidden;
     @apply bg-editor-bg text-editor-text;
+    font-size: var(--ui-font-size);
   }
 
   /* Scrollbar styling */

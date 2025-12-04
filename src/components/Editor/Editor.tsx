@@ -17,9 +17,11 @@ import { debounce } from '../../lib/utils/debounce';
 import { writeFile } from '../../lib/tauri/commands';
 import { serializeNote, htmlToMarkdown, markdownToHtml } from '../../lib/notes/noteParser';
 import EditorToolbar from './EditorToolbar';
-import { Wikilink } from './extensions/wikilink';
+import { Wikilink, WikilinkSuggestionItem } from './extensions/wikilink';
+import { WikilinkSuggestionExtension } from './extensions/WikilinkSuggestionExtension';
 
 import './editor.css';
+import 'tippy.js/dist/tippy.css';
 
 const lowlight = createLowlight(common);
 
@@ -34,10 +36,11 @@ const Editor: React.FC<EditorProps> = ({ initialContent = '', onSave }) => {
 
   const selectedNote = selectedNoteId ? getNoteById(selectedNoteId) : null;
 
-  // Use ref for wikilink click handler to avoid recreating editor
+  // Use refs for handlers to avoid recreating editor extensions
   const wikilinkClickRef = useRef<(target: string) => void>(() => {});
+  const wikilinkSuggestionsRef = useRef<(query: string) => WikilinkSuggestionItem[]>(() => []);
 
-  // Update the ref when notes/setSelectedNoteId changes
+  // Update the click ref when notes/setSelectedNoteId changes
   useEffect(() => {
     wikilinkClickRef.current = (target: string) => {
       // Find note by title or filepath
@@ -54,9 +57,49 @@ const Editor: React.FC<EditorProps> = ({ initialContent = '', onSave }) => {
     };
   }, [notes, setSelectedNoteId]);
 
+  // Update the suggestions ref when notes/selectedNoteId changes
+  useEffect(() => {
+    wikilinkSuggestionsRef.current = (query: string): WikilinkSuggestionItem[] => {
+      const queryLower = query.toLowerCase();
+      const results: WikilinkSuggestionItem[] = [];
+
+      for (const note of notes.values()) {
+        // Skip current note
+        if (note.id === selectedNoteId) continue;
+
+        const titleMatch = note.frontmatter.title.toLowerCase().includes(queryLower);
+        const filepathMatch = note.filepath.toLowerCase().includes(queryLower);
+
+        if (!query || titleMatch || filepathMatch) {
+          results.push({
+            id: note.id,
+            title: note.frontmatter.title,
+            filepath: note.filepath,
+          });
+        }
+      }
+
+      // Sort by title match first, then alphabetically
+      return results
+        .sort((a, b) => {
+          const aStartsWith = a.title.toLowerCase().startsWith(queryLower);
+          const bStartsWith = b.title.toLowerCase().startsWith(queryLower);
+          if (aStartsWith && !bStartsWith) return -1;
+          if (!aStartsWith && bStartsWith) return 1;
+          return a.title.localeCompare(b.title);
+        })
+        .slice(0, 10); // Limit to 10 results
+    };
+  }, [notes, selectedNoteId]);
+
   // Stable callback that uses the ref
   const handleWikilinkClick = useCallback((target: string) => {
     wikilinkClickRef.current(target);
+  }, []);
+
+  // Stable callback that uses the ref
+  const getWikilinkSuggestions = useCallback((query: string): WikilinkSuggestionItem[] => {
+    return wikilinkSuggestionsRef.current(query);
   }, []);
 
   // Debounced save function
@@ -122,7 +165,10 @@ const Editor: React.FC<EditorProps> = ({ initialContent = '', onSave }) => {
     Wikilink.configure({
       onWikilinkClick: handleWikilinkClick,
     }),
-  ], [handleWikilinkClick]);
+    WikilinkSuggestionExtension.configure({
+      getItems: getWikilinkSuggestions,
+    }),
+  ], [handleWikilinkClick, getWikilinkSuggestions]);
 
   const editor = useEditor({
     extensions,
