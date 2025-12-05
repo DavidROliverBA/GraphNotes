@@ -5,7 +5,7 @@ import App from "./App";
 import "./styles/globals.css";
 
 // Polyfill Buffer for browser (required by gray-matter)
-globalThis.Buffer = Buffer;
+(window as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

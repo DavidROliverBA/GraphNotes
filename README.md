@@ -83,16 +83,43 @@ The built application will be in `src-tauri/target/release/`.
 
 ## Development
 
-```bash
-# Run frontend only (for faster iteration)
-npm run dev
+### Running the App
 
-# Run tests
+```bash
+# Run as desktop app (Tauri) - full functionality
+npm run tauri dev
+
+# Run in browser mode - for quick UI iteration
+npm run dev
+```
+
+> **Note:** Browser mode uses in-memory storage and mock file operations. Use Tauri mode for actual file system access.
+
+### Testing
+
+```bash
+# Unit tests (watch mode)
 npm run test
 
-# Run tests once
+# Unit tests (single run)
 npm run test:run
 
+# E2E tests with Playwright
+npm run test:e2e
+
+# E2E tests with UI
+npm run test:e2e:ui
+
+# E2E tests (headed, visible browser)
+npm run test:e2e:headed
+
+# View E2E test report
+npm run test:e2e:report
+```
+
+### Build
+
+```bash
 # Type check and build frontend
 npm run build
 ```
@@ -128,6 +155,8 @@ graphnotes/
 │   │   ├── commands/            # Tauri IPC commands
 │   │   └── main.rs              # Tauri entry point
 │   └── tauri.conf.json          # Tauri configuration
+├── e2e/                         # Playwright E2E tests
+│   └── *.spec.ts                # Test specifications
 └── notes/                       # Default notes directory
     └── .graphnotes/             # Vault configuration
         ├── events.jsonl         # Event log

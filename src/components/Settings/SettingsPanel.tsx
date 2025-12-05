@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Settings,
@@ -25,6 +25,22 @@ interface SettingsPanelProps {
 export function SettingsPanel({ className = '' }: SettingsPanelProps) {
   const { showSettings, setShowSettings } = useUIStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+
+  // Handle Escape key to close the modal
+  useEffect(() => {
+    if (!showSettings) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowSettings(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showSettings, setShowSettings]);
 
   if (!showSettings) return null;
 

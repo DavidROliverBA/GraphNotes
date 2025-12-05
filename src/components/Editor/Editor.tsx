@@ -61,21 +61,19 @@ export function Editor({ note, onSave }: EditorProps) {
   const { createNote, notesList } = useNoteStore();
   const { currentVault } = useSettingsStore();
   const { setSelectedNoteId } = useUIStore();
-  const [localContent, setLocalContent] = useState<YooptaContentValue | undefined>();
-  const isInitialMount = useRef(true);
   const currentNoteIdRef = useRef(note.id);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize content from note
+  const [localContent, setLocalContent] = useState<YooptaContentValue>(() =>
+    markdownToYoopta(note.content)
+  );
 
   // Wikilink suggestion state
   const [showWikilinkSuggestion, setShowWikilinkSuggestion] = useState(false);
   const [wikilinkQuery, setWikilinkQuery] = useState('');
   const [wikilinkPosition, setWikilinkPosition] = useState({ top: 0, left: 0 });
   const wikilinkStartRef = useRef<{ node: Node; offset: number } | null>(null);
-
-  // Convert markdown content to Yoopta format
-  const initialContent = useMemo(() => {
-    return markdownToYoopta(note.content);
-  }, [note.id]); // Only recompute when note changes
 
   // Initialize editor when note changes
   useEffect(() => {
@@ -86,14 +84,6 @@ export function Editor({ note, onSave }: EditorProps) {
       editor.setEditorValue(content);
     }
   }, [note.id, note.content, editor]);
-
-  // Set initial content on mount
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      setLocalContent(initialContent);
-    }
-  }, [initialContent]);
 
   // Handle content changes
   const handleChange = useCallback(

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
+import { openDialog } from '../../lib/tauri/dialog';
 import {
   FolderOpen,
   Clock,
@@ -19,7 +19,7 @@ export function VaultSelector() {
     setError(null);
 
     try {
-      const selected = await open({
+      const selected = await openDialog({
         directory: true,
         multiple: false,
         title: 'Select a vault folder',
@@ -40,7 +40,7 @@ export function VaultSelector() {
     setError(null);
 
     try {
-      const selected = await open({
+      const selected = await openDialog({
         directory: true,
         multiple: false,
         title: 'Select a folder for your new vault',

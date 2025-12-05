@@ -1,5 +1,3 @@
-import { readTextFile, writeTextFile, mkdir } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
 import {
   SyncEvent,
   VectorClock,
@@ -9,9 +7,48 @@ import {
   createBaseEvent,
   EventType,
 } from './events';
+import { isTauriEnvironment } from '../tauri/environment';
 
 const EVENTS_FILE = 'events.jsonl';
 const CONFIG_FILE = 'config.json';
+
+// Lazy load Tauri APIs
+const getTauriApis = async () => {
+  if (!isTauriEnvironment()) {
+    return null;
+  }
+  const [fs, path] = await Promise.all([
+    import('@tauri-apps/plugin-fs'),
+    import('@tauri-apps/api/path'),
+  ]);
+  return { fs, path };
+};
+
+// Browser-mode storage (in-memory)
+const browserStorage = {
+  files: new Map<string, string>(),
+};
+
+// Browser-mode file operations
+async function browserJoin(...parts: string[]): Promise<string> {
+  return parts.join('/').replace(/\/+/g, '/');
+}
+
+async function browserReadTextFile(path: string): Promise<string> {
+  const content = browserStorage.files.get(path);
+  if (content === undefined) {
+    throw new Error(`File not found: ${path}`);
+  }
+  return content;
+}
+
+async function browserWriteTextFile(path: string, content: string): Promise<void> {
+  browserStorage.files.set(path, content);
+}
+
+async function browserMkdir(_path: string, _options?: { recursive?: boolean }): Promise<void> {
+  // No-op in browser mode
+}
 
 interface VaultConfig {
   deviceId: string;
@@ -37,6 +74,10 @@ export class EventLog {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const mkdir = tauri ? tauri.fs.mkdir : browserMkdir;
+
     const configPath = await join(this.vaultPath, '.graphnotes');
 
     // Ensure .graphnotes directory exists
@@ -59,6 +100,11 @@ export class EventLog {
    * Load or create vault configuration
    */
   private async loadOrCreateConfig(): Promise<void> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+    const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
+
     const configFilePath = await join(this.vaultPath, '.graphnotes', CONFIG_FILE);
 
     try {
@@ -85,6 +131,10 @@ export class EventLog {
    * Load events from the events.jsonl file
    */
   private async loadEvents(): Promise<void> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+
     const eventsFilePath = await join(this.vaultPath, '.graphnotes', EVENTS_FILE);
 
     try {
@@ -130,6 +180,11 @@ export class EventLog {
     this.events.push(event);
 
     // Append to file
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+    const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
+
     const eventsFilePath = await join(this.vaultPath, '.graphnotes', EVENTS_FILE);
 
     try {
@@ -195,6 +250,11 @@ export class EventLog {
   async mergeRemoteEvents(remoteEvents: SyncEvent[]): Promise<SyncEvent[]> {
     const newEvents: SyncEvent[] = [];
 
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+    const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
+
     for (const remoteEvent of remoteEvents) {
       // Check if we already have this event
       const exists = this.events.some((e) => e.id === remoteEvent.id);
@@ -255,6 +315,10 @@ export class EventLog {
   async clearEvents(): Promise<void> {
     this.events = [];
     this.vectorClock = {};
+
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
 
     const eventsFilePath = await join(this.vaultPath, '.graphnotes', EVENTS_FILE);
     await writeTextFile(eventsFilePath, '');

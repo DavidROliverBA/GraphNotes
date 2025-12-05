@@ -189,6 +189,36 @@
   background-color: rgba(99, 102, 241, 0.2);
 }
 
+/* Remove Yoopta's default block focus styling */
+.yoopta-editor [data-yoopta-block]:focus,
+.yoopta-editor [data-yoopta-block]:focus-visible,
+.yoopta-editor [data-yoopta-block]:focus-within,
+.yoopta-editor [data-yoopta-block][data-focused="true"],
+.yoopta-editor [data-yoopta-block].yoopta-block-focused,
+.yoopta-editor [data-yoopta-block][data-state="active"],
+.yoopta-editor [contenteditable]:focus,
+.yoopta-editor [contenteditable]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+/* Override any blue border/outline Yoopta adds */
+.yoopta-editor * {
+  outline-color: transparent !important;
+}
+
+.yoopta-editor [data-yoopta-block] {
+  border: 1px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+/* Subtle hover effect instead of harsh focus box */
+.yoopta-editor [data-yoopta-block]:hover {
+  border-color: var(--border-subtle);
+  border-radius: 4px;
+}
+
 /* Toolbar */
 .yoopta-toolbar {
   background-color: var(--bg-elevated);
@@ -263,6 +293,33 @@
 
 .dark .yoopta-editor code {
   background-color: var(--bg-tertiary);
+}
+
+/* Dark mode action menu - ensure readable text when rendered via portal */
+.dark .yoopta-action-menu,
+[data-theme="dark"] .yoopta-action-menu {
+  background-color: #1f1f1f;
+  border-color: #404040;
+}
+
+.dark .yoopta-action-menu-item-title,
+[data-theme="dark"] .yoopta-action-menu-item-title {
+  color: #f5f5f5;
+}
+
+.dark .yoopta-action-menu-item-description,
+[data-theme="dark"] .yoopta-action-menu-item-description {
+  color: #a3a3a3;
+}
+
+.dark .yoopta-action-menu-item-icon,
+[data-theme="dark"] .yoopta-action-menu-item-icon {
+  color: #a3a3a3;
+}
+
+.dark .yoopta-action-menu-item:hover,
+[data-theme="dark"] .yoopta-action-menu-item:hover {
+  background-color: #262626;
 }
 
 /* Focus mode */

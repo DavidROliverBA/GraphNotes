@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { SuperTag, SuperTagAttribute } from '../lib/superTags/types';
-import { readTextFile, writeTextFile, mkdir, readDir, remove } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
+import { isTauriEnvironment } from '../lib/tauri/environment';
+
+// Dynamically import Tauri APIs only when in Tauri environment
+const getTauriApis = async () => {
+  if (!isTauriEnvironment()) {
+    return null;
+  }
+  const [fs, path] = await Promise.all([
+    import('@tauri-apps/plugin-fs'),
+    import('@tauri-apps/api/path'),
+  ]);
+  return { fs, path };
+};
 
 interface SuperTagState {
   // State
@@ -31,25 +42,33 @@ export const useSuperTagStore = create<SuperTagState>((set, get) => ({
     set({ isLoading: true, error: null });
     currentVaultPath = vaultPath;
 
+    // In browser mode, just use empty super tags
+    const tauri = await getTauriApis();
+    if (!tauri) {
+      console.log('Running in browser mode - using empty super tags');
+      set({ superTags: new Map(), isLoading: false });
+      return;
+    }
+
     try {
-      const superTagsPath = await join(vaultPath, '.graphnotes', 'supertags');
+      const superTagsPath = await tauri.path.join(vaultPath, '.graphnotes', 'supertags');
 
       // Ensure directory exists
       try {
-        await mkdir(superTagsPath, { recursive: true });
+        await tauri.fs.mkdir(superTagsPath, { recursive: true });
       } catch {
         // Directory might already exist
       }
 
       // Read all super tag files
-      const entries = await readDir(superTagsPath);
+      const entries = await tauri.fs.readDir(superTagsPath);
       const superTags = new Map<string, SuperTag>();
 
       for (const entry of entries) {
         if (entry.name?.endsWith('.json')) {
           try {
-            const filePath = await join(superTagsPath, entry.name);
-            const content = await readTextFile(filePath);
+            const filePath = await tauri.path.join(superTagsPath, entry.name);
+            const content = await tauri.fs.readTextFile(filePath);
             const tag = JSON.parse(content) as SuperTag;
             superTags.set(tag.id, tag);
           } catch (err) {
@@ -74,9 +93,20 @@ export const useSuperTagStore = create<SuperTagState>((set, get) => ({
       throw new Error('No vault path set');
     }
 
+    const tauri = await getTauriApis();
+    if (!tauri) {
+      // Browser mode - just update state
+      set((state) => {
+        const newTags = new Map(state.superTags);
+        newTags.set(tag.id, tag);
+        return { superTags: newTags };
+      });
+      return;
+    }
+
     try {
-      const filePath = await join(currentVaultPath, '.graphnotes', 'supertags', `${tag.id}.json`);
-      await writeTextFile(filePath, JSON.stringify(tag, null, 2));
+      const filePath = await tauri.path.join(currentVaultPath, '.graphnotes', 'supertags', `${tag.id}.json`);
+      await tauri.fs.writeTextFile(filePath, JSON.stringify(tag, null, 2));
 
       set((state) => {
         const newTags = new Map(state.superTags);
@@ -105,9 +135,20 @@ export const useSuperTagStore = create<SuperTagState>((set, get) => ({
       modified: new Date().toISOString(),
     };
 
+    const tauri = await getTauriApis();
+    if (!tauri) {
+      // Browser mode - just update state
+      set((state) => {
+        const newTags = new Map(state.superTags);
+        newTags.set(id, updated);
+        return { superTags: newTags };
+      });
+      return;
+    }
+
     try {
-      const filePath = await join(currentVaultPath, '.graphnotes', 'supertags', `${id}.json`);
-      await writeTextFile(filePath, JSON.stringify(updated, null, 2));
+      const filePath = await tauri.path.join(currentVaultPath, '.graphnotes', 'supertags', `${id}.json`);
+      await tauri.fs.writeTextFile(filePath, JSON.stringify(updated, null, 2));
 
       set((state) => {
         const newTags = new Map(state.superTags);
@@ -125,9 +166,20 @@ export const useSuperTagStore = create<SuperTagState>((set, get) => ({
       throw new Error('No vault path set');
     }
 
+    const tauri = await getTauriApis();
+    if (!tauri) {
+      // Browser mode - just update state
+      set((state) => {
+        const newTags = new Map(state.superTags);
+        newTags.delete(id);
+        return { superTags: newTags };
+      });
+      return;
+    }
+
     try {
-      const filePath = await join(currentVaultPath, '.graphnotes', 'supertags', `${id}.json`);
-      await remove(filePath);
+      const filePath = await tauri.path.join(currentVaultPath, '.graphnotes', 'supertags', `${id}.json`);
+      await tauri.fs.remove(filePath);
 
       set((state) => {
         const newTags = new Map(state.superTags);

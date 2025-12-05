@@ -98,6 +98,26 @@
     overflow: hidden;
   }
 
+  /* Yoopta action menu dark mode - for portals rendered outside .dark container */
+  html.dark .yoopta-action-menu-list,
+  body.dark .yoopta-action-menu-list,
+  .dark .yoopta-action-menu-list {
+    background-color: #1f1f1f !important;
+    border-color: #404040 !important;
+  }
+
+  html.dark .yoopta-action-menu-list [class*="title"],
+  body.dark .yoopta-action-menu-list [class*="title"],
+  .dark .yoopta-action-menu-list [class*="title"] {
+    color: #f5f5f5 !important;
+  }
+
+  html.dark .yoopta-action-menu-list [class*="description"],
+  body.dark .yoopta-action-menu-list [class*="description"],
+  .dark .yoopta-action-menu-list [class*="description"] {
+    color: #a3a3a3 !important;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
@@ -117,8 +137,8 @@
     background-color: var(--border-strong);
   }
 
-  /* Focus visible states */
-  *:focus-visible {
+  /* Focus visible states - exclude editor elements */
+  *:focus-visible:not(.yoopta-editor *):not([data-yoopta-block]):not([contenteditable]) {
     @apply outline-none ring-2 ring-accent-primary ring-offset-2 ring-offset-bg-primary;
   }
 }

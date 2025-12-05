@@ -15,17 +15,39 @@ import { useUIStore } from '../../stores/uiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSuperTagList } from '../../stores/superTagStore';
 import { useNoteStore } from '../../stores/noteStore';
+import { useDailyNote } from '../../hooks/useDailyNote';
 import { FileTree } from './FileTree';
 
 export function Sidebar() {
-  const { setQuickSearchOpen } = useUIStore();
+  const { setQuickSearchOpen, setShowSettings } = useUIStore();
   const { currentVault } = useSettingsStore();
+  const { createNote } = useNoteStore();
+  const { setSelectedNoteId } = useUIStore();
   const superTagList = useSuperTagList();
   const { notes } = useNoteStore();
+  const { openToday } = useDailyNote();
   const [superTagsExpanded, setSuperTagsExpanded] = useState(true);
 
   const handleSearchFocus = () => {
     setQuickSearchOpen(true);
+  };
+
+  const handleNewNote = async () => {
+    if (!currentVault) return;
+    try {
+      const newNote = await createNote(currentVault.path, `note-${Date.now()}`, 'Untitled');
+      setSelectedNoteId(newNote.filepath);
+    } catch (err) {
+      console.error('Failed to create note:', err);
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setShowSettings(true);
+  };
+
+  const handleDailyNote = () => {
+    openToday();
   };
 
   // Get note count for each super tag
@@ -57,7 +79,7 @@ export function Sidebar() {
           Quick Access
         </div>
         <nav className="space-y-1">
-          <SidebarItem icon={CalendarDays} label="Daily Note" />
+          <SidebarItem icon={CalendarDays} label="Daily Note" onClick={handleDailyNote} />
           <SidebarItem icon={Star} label="Favourites" />
           <SidebarItem icon={Clock} label="Recent" />
         </nav>
@@ -73,6 +95,7 @@ export function Sidebar() {
             <button
               className="p-1 rounded hover:bg-bg-tertiary transition-colors duration-fast"
               title="New note"
+              onClick={handleNewNote}
             >
               <Plus className="w-4 h-4 text-text-tertiary" />
             </button>
@@ -143,7 +166,7 @@ export function Sidebar() {
 
       {/* Bottom Actions */}
       <div className="p-3 border-t border-border-subtle">
-        <button className="sidebar-item w-full">
+        <button className="sidebar-item w-full" onClick={handleOpenSettings}>
           <Settings className="w-4 h-4" />
           <span>Settings</span>
         </button>

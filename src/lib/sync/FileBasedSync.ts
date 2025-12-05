@@ -1,7 +1,70 @@
-import { readTextFile, writeTextFile, readDir, mkdir, remove } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
 import { SyncEvent, VectorClock, compareClock } from './events';
 import { EventLog } from './EventLog';
+import { isTauriEnvironment } from '../tauri/environment';
+
+// Lazy load Tauri APIs
+const getTauriApis = async () => {
+  if (!isTauriEnvironment()) {
+    return null;
+  }
+  const [fs, path] = await Promise.all([
+    import('@tauri-apps/plugin-fs'),
+    import('@tauri-apps/api/path'),
+  ]);
+  return { fs, path };
+};
+
+// Browser-mode storage (in-memory)
+const browserStorage = {
+  files: new Map<string, string>(),
+  directories: new Set<string>(),
+};
+
+// Browser-mode file operations
+async function browserJoin(...parts: string[]): Promise<string> {
+  return parts.join('/').replace(/\/+/g, '/');
+}
+
+async function browserReadTextFile(path: string): Promise<string> {
+  const content = browserStorage.files.get(path);
+  if (content === undefined) {
+    throw new Error(`File not found: ${path}`);
+  }
+  return content;
+}
+
+async function browserWriteTextFile(path: string, content: string): Promise<void> {
+  browserStorage.files.set(path, content);
+}
+
+async function browserMkdir(path: string, _options?: { recursive?: boolean }): Promise<void> {
+  browserStorage.directories.add(path);
+}
+
+async function browserRemove(path: string): Promise<void> {
+  browserStorage.files.delete(path);
+  browserStorage.directories.delete(path);
+}
+
+interface BrowserDirEntry {
+  name: string;
+}
+
+async function browserReadDir(path: string): Promise<BrowserDirEntry[]> {
+  const entries: BrowserDirEntry[] = [];
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
+
+  for (const filePath of browserStorage.files.keys()) {
+    if (filePath.startsWith(normalizedPath + '/')) {
+      const relativePath = filePath.slice(normalizedPath.length + 1);
+      if (!relativePath.includes('/')) {
+        entries.push({ name: relativePath });
+      }
+    }
+  }
+
+  return entries;
+}
 
 // Device presence file structure
 interface DevicePresence {
@@ -115,6 +178,8 @@ export class FileBasedSync {
 
     // Remove our presence file
     try {
+      const tauri = await getTauriApis();
+      const remove = tauri ? tauri.fs.remove : browserRemove;
       const presenceFile = await this.getPresenceFilePath();
       await remove(presenceFile);
     } catch {
@@ -129,6 +194,10 @@ export class FileBasedSync {
    */
   private async ensureSyncDirectories(): Promise<void> {
     try {
+      const tauri = await getTauriApis();
+      const join = tauri ? tauri.path.join : browserJoin;
+      const mkdir = tauri ? tauri.fs.mkdir : browserMkdir;
+
       const syncPath = await join(this.vaultPath, SYNC_DIR);
       await mkdir(syncPath, { recursive: true });
 
@@ -146,6 +215,8 @@ export class FileBasedSync {
    * Get path for our presence file
    */
   private async getPresenceFilePath(): Promise<string> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
     const deviceId = this.eventLog.getDeviceId();
     return join(this.vaultPath, SYNC_DIR, PRESENCE_DIR, `${deviceId}.json`);
   }
@@ -155,6 +226,9 @@ export class FileBasedSync {
    */
   private async updatePresence(): Promise<void> {
     try {
+      const tauri = await getTauriApis();
+      const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
+
       const presence: DevicePresence = {
         deviceId: this.eventLog.getDeviceId(),
         deviceName: this.config.deviceName,
@@ -179,6 +253,11 @@ export class FileBasedSync {
     const now = Date.now();
     const myDeviceId = this.eventLog.getDeviceId();
     const myClock = this.eventLog.getVectorClock();
+
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readDir = tauri ? tauri.fs.readDir : browserReadDir;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
 
     try {
       const presencePath = await join(this.vaultPath, SYNC_DIR, PRESENCE_DIR);
@@ -245,6 +324,10 @@ export class FileBasedSync {
    * Export local events to sync folder
    */
   private async exportLocalEvents(): Promise<void> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const writeTextFile = tauri ? tauri.fs.writeTextFile : browserWriteTextFile;
+
     const deviceId = this.eventLog.getDeviceId();
     const eventsPath = await join(
       this.vaultPath,
@@ -266,6 +349,10 @@ export class FileBasedSync {
    * Import events from other devices
    */
   private async importRemoteEvents(deviceStates: SyncDeviceState[]): Promise<void> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+
     const eventsDir = await join(this.vaultPath, SYNC_DIR, EVENTS_DIR);
 
     for (const device of deviceStates) {
@@ -300,6 +387,10 @@ export class FileBasedSync {
    * Force immediate sync
    */
   async forceSync(): Promise<{ imported: number; exported: number }> {
+    const tauri = await getTauriApis();
+    const join = tauri ? tauri.path.join : browserJoin;
+    const readTextFile = tauri ? tauri.fs.readTextFile : browserReadTextFile;
+
     let imported = 0;
     const exported = this.eventLog.getEventCount();
 
