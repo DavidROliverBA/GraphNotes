@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -20,6 +20,16 @@ interface TreeNode {
   isExpanded?: boolean;
 }
 
+interface FlattenedNode {
+  node: TreeNode;
+  depth: number;
+  isExpanded: boolean;
+}
+
+// Virtual scrolling configuration
+const ITEM_HEIGHT = 28; // Height of each row in pixels
+const OVERSCAN = 10; // Number of items to render outside visible area
+
 export function FileTree() {
   const { currentVault } = useSettingsStore();
   const { selectedNoteId, setSelectedNoteId } = useUIStore();
@@ -28,11 +38,46 @@ export function FileTree() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Virtual scrolling state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+
   useEffect(() => {
     if (currentVault) {
       loadDirectory(currentVault.path);
     }
   }, [currentVault]);
+
+  // Set up container height observer
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateHeight = () => {
+      setContainerHeight(container.clientHeight);
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // Handle scroll events
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      setScrollTop(container.scrollTop);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const loadDirectory = async (path: string) => {
     setLoading(true);
@@ -120,11 +165,51 @@ export function FileTree() {
     });
   };
 
-  const handleFileClick = (node: TreeNode) => {
+  const handleFileClick = useCallback((node: TreeNode) => {
     if (node.isFile) {
       setSelectedNoteId(node.path);
     }
-  };
+  }, [setSelectedNoteId]);
+
+  // Flatten tree into a list for virtual scrolling
+  const flattenedNodes = useMemo(() => {
+    const result: FlattenedNode[] = [];
+
+    const flatten = (nodes: TreeNode[], depth: number) => {
+      for (const node of nodes) {
+        const isExpanded = expandedPaths.has(node.path);
+        result.push({ node, depth, isExpanded });
+
+        if (node.isDirectory && isExpanded && node.children) {
+          flatten(node.children, depth + 1);
+        }
+      }
+    };
+
+    flatten(tree, 0);
+    return result;
+  }, [tree, expandedPaths]);
+
+  // Calculate visible items for virtual scrolling
+  const visibleItems = useMemo(() => {
+    if (flattenedNodes.length === 0 || containerHeight === 0) {
+      return [];
+    }
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN);
+    const endIndex = Math.min(
+      flattenedNodes.length - 1,
+      Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN
+    );
+
+    return flattenedNodes.slice(startIndex, endIndex + 1).map((item, i) => ({
+      ...item,
+      index: startIndex + i,
+      offsetY: (startIndex + i) * ITEM_HEIGHT,
+    }));
+  }, [flattenedNodes, scrollTop, containerHeight]);
+
+  const totalHeight = flattenedNodes.length * ITEM_HEIGHT;
 
   if (loading && tree.length === 0) {
     return (
@@ -154,20 +239,52 @@ export function FileTree() {
     );
   }
 
+  // Use regular rendering for small lists, virtual scrolling for large ones
+  const useVirtualization = flattenedNodes.length > 100;
+
+  if (!useVirtualization) {
+    // Regular rendering for small lists
+    return (
+      <div className="select-none">
+        {tree.map((node) => (
+          <TreeNodeItem
+            key={node.path}
+            node={node}
+            depth={0}
+            isExpanded={expandedPaths.has(node.path)}
+            isSelected={selectedNoteId === node.path}
+            onToggle={toggleExpand}
+            onClick={handleFileClick}
+            expandedPaths={expandedPaths}
+            selectedNoteId={selectedNoteId}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Virtual scrolling for large lists
   return (
-    <div className="select-none">
-      {tree.map((node) => (
-        <TreeNodeItem
-          key={node.path}
-          node={node}
-          depth={0}
-          isExpanded={expandedPaths.has(node.path)}
-          isSelected={selectedNoteId === node.path}
-          onToggle={toggleExpand}
-          onClick={handleFileClick}
-          expandedPaths={expandedPaths}
-        />
-      ))}
+    <div
+      ref={containerRef}
+      className="select-none h-full overflow-y-auto"
+    >
+      <div
+        style={{ height: totalHeight, position: 'relative' }}
+      >
+        {visibleItems.map(({ node, depth, isExpanded, offsetY }) => (
+          <VirtualTreeNodeItem
+            key={node.path}
+            node={node}
+            depth={depth}
+            isExpanded={isExpanded}
+            isSelected={selectedNoteId === node.path}
+            onToggle={toggleExpand}
+            onClick={handleFileClick}
+            offsetY={offsetY}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -180,6 +297,7 @@ interface TreeNodeItemProps {
   onToggle: (node: TreeNode) => void;
   onClick: (node: TreeNode) => void;
   expandedPaths: Set<string>;
+  selectedNoteId: string | null;
 }
 
 function TreeNodeItem({
@@ -190,6 +308,7 @@ function TreeNodeItem({
   onToggle,
   onClick,
   expandedPaths,
+  selectedNoteId,
 }: TreeNodeItemProps) {
   const paddingLeft = 8 + depth * 16;
 
@@ -255,14 +374,95 @@ function TreeNodeItem({
               node={child}
               depth={depth + 1}
               isExpanded={expandedPaths.has(child.path)}
-              isSelected={isSelected}
+              isSelected={selectedNoteId === child.path}
               onToggle={onToggle}
               onClick={onClick}
               expandedPaths={expandedPaths}
+              selectedNoteId={selectedNoteId}
             />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Virtual tree node item for virtual scrolling
+interface VirtualTreeNodeItemProps {
+  node: TreeNode;
+  depth: number;
+  isExpanded: boolean;
+  isSelected: boolean;
+  onToggle: (node: TreeNode) => void;
+  onClick: (node: TreeNode) => void;
+  offsetY: number;
+}
+
+function VirtualTreeNodeItem({
+  node,
+  depth,
+  isExpanded,
+  isSelected,
+  onToggle,
+  onClick,
+  offsetY,
+}: VirtualTreeNodeItemProps) {
+  const paddingLeft = 8 + depth * 16;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (node.isDirectory) {
+      onToggle(node);
+    } else {
+      onClick(node);
+    }
+  };
+
+  const getDisplayName = (name: string) => {
+    if (name.endsWith('.md')) {
+      return name.slice(0, -3);
+    }
+    return name;
+  };
+
+  return (
+    <div
+      className={`
+        absolute left-0 right-0 flex items-center gap-1 py-1 px-1 cursor-pointer rounded-sm
+        transition-colors duration-fast
+        ${isSelected ? 'bg-accent-primary/10 text-accent-primary' : 'hover:bg-bg-tertiary'}
+      `}
+      style={{
+        paddingLeft,
+        height: ITEM_HEIGHT,
+        transform: `translateY(${offsetY}px)`,
+      }}
+      onClick={handleClick}
+    >
+      {node.isDirectory && (
+        <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+          {isExpanded ? (
+            <ChevronDown className="w-3 h-3 text-text-tertiary" />
+          ) : (
+            <ChevronRight className="w-3 h-3 text-text-tertiary" />
+          )}
+        </span>
+      )}
+      {!node.isDirectory && <span className="w-4" />}
+
+      <span className="flex-shrink-0">
+        {node.isDirectory ? (
+          isExpanded ? (
+            <FolderOpen className="w-4 h-4 text-accent-warning" />
+          ) : (
+            <Folder className="w-4 h-4 text-accent-warning" />
+          )
+        ) : (
+          <FileText className="w-4 h-4 text-text-tertiary" />
+        )}
+      </span>
+
+      <span className="truncate text-sm">{getDisplayName(node.name)}</span>
     </div>
   );
 }

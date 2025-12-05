@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -28,8 +30,10 @@
     "@yoopta/marks": "^4.9.9",
     "@yoopta/paragraph": "^4.9.9",
     "@yoopta/toolbar": "^4.9.9",
+    "buffer": "^6.0.3",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.400.0",
+    "minisearch": "^7.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "uuid": "^10.0.0",
@@ -37,14 +41,18 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.0",
+    "jsdom": "^27.2.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.0.15"
   }
 }

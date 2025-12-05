@@ -2,23 +2,32 @@ import { useEffect } from 'react';
 import { useSettingsStore } from './stores/settingsStore';
 import { useNoteStore } from './stores/noteStore';
 import { useUIStore } from './stores/uiStore';
+import { useSuperTagStore } from './stores/superTagStore';
 import { MainLayout } from './components/Layout/MainLayout';
 import { VaultSelector } from './components/Layout/VaultSelector';
 import { Editor } from './components/Editor/Editor';
 import { EditorPlaceholder } from './components/Editor/EditorPlaceholder';
 import { GraphPanel } from './components/Layout/GraphPanel';
+import { QuickSearch } from './components/Search';
+import { SettingsPanel } from './components/Settings';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
   const { currentVault } = useSettingsStore();
   const { currentNote, loadNote, loadNotesFromVault } = useNoteStore();
   const { selectedNoteId, viewMode } = useUIStore();
+  const { loadSuperTags } = useSuperTagStore();
 
-  // Load notes when vault changes
+  // Initialize keyboard shortcuts
+  useKeyboardShortcuts();
+
+  // Load notes and super tags when vault changes
   useEffect(() => {
     if (currentVault) {
       loadNotesFromVault(currentVault.path);
+      loadSuperTags(currentVault.path);
     }
-  }, [currentVault, loadNotesFromVault]);
+  }, [currentVault, loadNotesFromVault, loadSuperTags]);
 
   // Load note when selection changes
   useEffect(() => {
@@ -64,7 +73,13 @@ function App() {
     }
   };
 
-  return <MainLayout>{renderContent()}</MainLayout>;
+  return (
+    <>
+      <MainLayout>{renderContent()}</MainLayout>
+      <QuickSearch />
+      <SettingsPanel />
+    </>
+  );
 }
 
 export default App;

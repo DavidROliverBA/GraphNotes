@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Search,
   Star,
@@ -6,17 +7,32 @@ import {
   Plus,
   Settings,
   CalendarDays,
+  Hash,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useSuperTagList } from '../../stores/superTagStore';
+import { useNoteStore } from '../../stores/noteStore';
 import { FileTree } from './FileTree';
 
 export function Sidebar() {
   const { setQuickSearchOpen } = useUIStore();
   const { currentVault } = useSettingsStore();
+  const superTagList = useSuperTagList();
+  const { notes } = useNoteStore();
+  const [superTagsExpanded, setSuperTagsExpanded] = useState(true);
 
   const handleSearchFocus = () => {
     setQuickSearchOpen(true);
+  };
+
+  // Get note count for each super tag
+  const getTagNoteCount = (tagId: string) => {
+    return Array.from(notes.values()).filter((note) =>
+      note.frontmatter.superTags?.includes(tagId)
+    ).length;
   };
 
   return (
@@ -79,12 +95,50 @@ export function Sidebar() {
 
       {/* Super Tags */}
       <div className="px-3 py-3 border-t border-border-subtle">
-        <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+        <button
+          onClick={() => setSuperTagsExpanded(!superTagsExpanded)}
+          className="flex items-center gap-1 w-full text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2 hover:text-text-secondary"
+        >
+          {superTagsExpanded ? (
+            <ChevronDown className="w-3 h-3" />
+          ) : (
+            <ChevronRight className="w-3 h-3" />
+          )}
           Super Tags
-        </div>
-        <div className="text-sm text-text-tertiary">
-          No super tags yet
-        </div>
+          <span className="ml-auto text-[10px] font-normal">
+            {superTagList.length}
+          </span>
+        </button>
+        {superTagsExpanded && (
+          <div className="space-y-0.5">
+            {superTagList.length === 0 ? (
+              <div className="text-sm text-text-tertiary py-2">
+                No super tags yet
+              </div>
+            ) : (
+              superTagList.map((tag) => (
+                <button
+                  key={tag.id}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-tertiary rounded transition-colors"
+                >
+                  <span
+                    className="w-4 h-4 rounded flex items-center justify-center text-xs flex-shrink-0"
+                    style={{
+                      backgroundColor: `${tag.colour}30`,
+                      color: tag.colour,
+                    }}
+                  >
+                    {tag.icon || <Hash className="w-2.5 h-2.5" />}
+                  </span>
+                  <span className="flex-1 text-left truncate">{tag.name}</span>
+                  <span className="text-xs text-text-tertiary">
+                    {getTagNoteCount(tag.id)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom Actions */}

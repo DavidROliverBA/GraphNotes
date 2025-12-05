@@ -17,9 +17,14 @@
     "fs:allow-read-file",
     "fs:allow-write-file",
     "fs:allow-copy-file",
-    "fs:scope-home",
-    "fs:scope-document",
-    "fs:scope-desktop",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$HOME/**",
+        "$DOCUMENT/**",
+        "$DESKTOP/**"
+      ]
+    },
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
