@@ -1,160 +1,156 @@
-// src/stores/graphStore.ts
-
 import { create } from 'zustand';
-import { GraphNode, GraphEdge, RelationshipType, DEFAULT_RELATIONSHIP_TYPES } from '../lib/graph/types';
+import {
+  GraphNode,
+  GraphEdge,
+  GraphStats,
+  GraphFilter,
+  RelationshipPreset,
+  DEFAULT_RELATIONSHIP_PRESETS,
+  LayoutType,
+  EdgeAppearance,
+} from '../lib/graph/types';
+import { graphManager } from '../lib/graph/GraphManager';
+import { Note } from '../lib/notes/types';
 
 interface GraphState {
   // Graph data
-  nodes: Map<string, GraphNode>;
-  edges: Map<string, GraphEdge>;
-  relationshipTypes: RelationshipType[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  stats: GraphStats;
 
-  // Graph view state
+  // UI state
+  selectedNodeId: string | null;
   hoveredNodeId: string | null;
-  selectedEdgeId: string | null;
-  zoomLevel: number;
+  focusedNodeId: string | null; // For subgraph view
+  filter: GraphFilter;
+  layoutType: LayoutType;
 
-  // Filters
-  filterByTags: string[];
-  filterByRelationships: string[];
-  showOrphanNodes: boolean;
+  // Relationship presets
+  relationshipPresets: RelationshipPreset[];
 
   // Actions
-  setNodes: (nodes: Map<string, GraphNode>) => void;
-  addNode: (node: GraphNode) => void;
-  updateNode: (id: string, updates: Partial<GraphNode>) => void;
-  removeNode: (id: string) => void;
+  buildGraph: (notes: Note[]) => void;
+  updateNote: (note: Note) => void;
+  removeNote: (noteId: string) => void;
 
-  setEdges: (edges: Map<string, GraphEdge>) => void;
-  addEdge: (edge: GraphEdge) => void;
-  updateEdge: (id: string, updates: Partial<GraphEdge>) => void;
-  removeEdge: (id: string) => void;
-
-  setRelationshipTypes: (types: RelationshipType[]) => void;
+  // Selection
+  setSelectedNodeId: (id: string | null) => void;
   setHoveredNodeId: (id: string | null) => void;
-  setSelectedEdgeId: (id: string | null) => void;
-  setZoomLevel: (level: number) => void;
-  setFilterByTags: (tags: string[]) => void;
-  setFilterByRelationships: (relationships: string[]) => void;
-  setShowOrphanNodes: (show: boolean) => void;
+  setFocusedNodeId: (id: string | null) => void;
 
-  // Selectors
-  getNodeById: (id: string) => GraphNode | undefined;
-  getEdgeById: (id: string) => GraphEdge | undefined;
-  getEdgesForNode: (nodeId: string) => GraphEdge[];
-  getConnectedNodes: (nodeId: string) => GraphNode[];
+  // Filtering
+  setFilter: (filter: GraphFilter) => void;
+  clearFilter: () => void;
+
+  // Layout
+  setLayoutType: (type: LayoutType) => void;
+
+  // Edge operations
+  updateEdgeAppearance: (edgeId: string, appearance: Partial<EdgeAppearance>) => void;
+  removeEdge: (edgeId: string) => void;
+
+  // Relationship presets
+  addRelationshipPreset: (preset: RelationshipPreset) => void;
+  removeRelationshipPreset: (presetId: string) => void;
+
+  // Helpers
+  getIncomingLinks: (nodeId: string) => GraphEdge[];
+  getOutgoingLinks: (nodeId: string) => GraphEdge[];
+  getNeighbors: (nodeId: string) => GraphNode[];
+  getSubgraph: (nodeId: string, depth?: number) => { nodes: GraphNode[]; edges: GraphEdge[] };
 }
 
-export const useGraphStore = create<GraphState>((set, get) => ({
+const initialStats: GraphStats = {
+  totalNodes: 0,
+  totalEdges: 0,
+  orphanedNodes: 0,
+  mostConnectedNodes: [],
+};
+
+export const useGraphStore = create<GraphState>((set) => ({
   // Initial state
-  nodes: new Map(),
-  edges: new Map(),
-  relationshipTypes: DEFAULT_RELATIONSHIP_TYPES,
+  nodes: [],
+  edges: [],
+  stats: initialStats,
+  selectedNodeId: null,
   hoveredNodeId: null,
-  selectedEdgeId: null,
-  zoomLevel: 1,
-  filterByTags: [],
-  filterByRelationships: [],
-  showOrphanNodes: true,
+  focusedNodeId: null,
+  filter: {},
+  layoutType: 'force',
+  relationshipPresets: DEFAULT_RELATIONSHIP_PRESETS,
 
-  // Node actions
-  setNodes: (nodes) => set({ nodes }),
+  // Build the entire graph from notes
+  buildGraph: (notes: Note[]) => {
+    graphManager.buildFromNotes(notes);
+    set({
+      nodes: graphManager.getNodes(),
+      edges: graphManager.getEdges(),
+      stats: graphManager.getStats(),
+    });
+  },
 
-  addNode: (node) =>
-    set((state) => {
-      const newNodes = new Map(state.nodes);
-      newNodes.set(node.id, node);
-      return { nodes: newNodes };
-    }),
+  // Update graph when a note changes
+  updateNote: (note: Note) => {
+    graphManager.updateNode(note);
+    set({
+      nodes: graphManager.getNodes(),
+      edges: graphManager.getEdges(),
+      stats: graphManager.getStats(),
+    });
+  },
 
-  updateNode: (id, updates) =>
-    set((state) => {
-      const existingNode = state.nodes.get(id);
-      if (!existingNode) return state;
+  // Remove a note from the graph
+  removeNote: (noteId: string) => {
+    graphManager.removeNode(noteId);
+    set({
+      nodes: graphManager.getNodes(),
+      edges: graphManager.getEdges(),
+      stats: graphManager.getStats(),
+    });
+  },
 
-      const newNodes = new Map(state.nodes);
-      newNodes.set(id, { ...existingNode, ...updates });
-      return { nodes: newNodes };
-    }),
-
-  removeNode: (id) =>
-    set((state) => {
-      const newNodes = new Map(state.nodes);
-      newNodes.delete(id);
-      return { nodes: newNodes };
-    }),
-
-  // Edge actions
-  setEdges: (edges) => set({ edges }),
-
-  addEdge: (edge) =>
-    set((state) => {
-      const newEdges = new Map(state.edges);
-      newEdges.set(edge.id, edge);
-      return { edges: newEdges };
-    }),
-
-  updateEdge: (id, updates) =>
-    set((state) => {
-      const existingEdge = state.edges.get(id);
-      if (!existingEdge) return state;
-
-      const newEdges = new Map(state.edges);
-      newEdges.set(id, { ...existingEdge, ...updates });
-      return { edges: newEdges };
-    }),
-
-  removeEdge: (id) =>
-    set((state) => {
-      const newEdges = new Map(state.edges);
-      newEdges.delete(id);
-      return { edges: newEdges };
-    }),
-
-  // Other actions
-  setRelationshipTypes: (types) => set({ relationshipTypes: types }),
+  // Selection
+  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
   setHoveredNodeId: (id) => set({ hoveredNodeId: id }),
-  setSelectedEdgeId: (id) => set({ selectedEdgeId: id }),
-  setZoomLevel: (level) => set({ zoomLevel: level }),
-  setFilterByTags: (tags) => set({ filterByTags: tags }),
-  setFilterByRelationships: (relationships) => set({ filterByRelationships: relationships }),
-  setShowOrphanNodes: (show) => set({ showOrphanNodes: show }),
+  setFocusedNodeId: (id) => set({ focusedNodeId: id }),
 
-  // Selectors
-  getNodeById: (id) => get().nodes.get(id),
-  getEdgeById: (id) => get().edges.get(id),
+  // Filtering
+  setFilter: (filter) => set({ filter }),
+  clearFilter: () => set({ filter: {} }),
 
-  getEdgesForNode: (nodeId) => {
-    const edges = get().edges;
-    const result: GraphEdge[] = [];
-    for (const edge of edges.values()) {
-      if (edge.source === nodeId || edge.target === nodeId) {
-        result.push(edge);
-      }
-    }
-    return result;
+  // Layout
+  setLayoutType: (type) => set({ layoutType: type }),
+
+  // Edge operations
+  updateEdgeAppearance: (edgeId, appearance) => {
+    graphManager.updateEdgeAppearance(edgeId, appearance);
+    set({ edges: graphManager.getEdges() });
   },
 
-  getConnectedNodes: (nodeId) => {
-    const edges = get().getEdgesForNode(nodeId);
-    const nodes = get().nodes;
-    const connectedIds = new Set<string>();
-
-    for (const edge of edges) {
-      if (edge.source === nodeId) {
-        connectedIds.add(edge.target);
-      } else {
-        connectedIds.add(edge.source);
-      }
-    }
-
-    const result: GraphNode[] = [];
-    for (const id of connectedIds) {
-      const node = nodes.get(id);
-      if (node) {
-        result.push(node);
-      }
-    }
-    return result;
+  removeEdge: (edgeId) => {
+    graphManager.removeEdge(edgeId);
+    set({
+      edges: graphManager.getEdges(),
+      stats: graphManager.getStats(),
+    });
   },
+
+  // Relationship presets
+  addRelationshipPreset: (preset) => {
+    set((state) => ({
+      relationshipPresets: [...state.relationshipPresets, preset],
+    }));
+  },
+
+  removeRelationshipPreset: (presetId) => {
+    set((state) => ({
+      relationshipPresets: state.relationshipPresets.filter((p) => p.id !== presetId),
+    }));
+  },
+
+  // Helpers
+  getIncomingLinks: (nodeId) => graphManager.getIncomingEdges(nodeId),
+  getOutgoingLinks: (nodeId) => graphManager.getOutgoingEdges(nodeId),
+  getNeighbors: (nodeId) => graphManager.getNeighbors(nodeId),
+  getSubgraph: (nodeId, depth = 2) => graphManager.getSubgraph(nodeId, depth),
 }));

@@ -1,82 +1,73 @@
-// src/stores/uiStore.ts
-
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type ViewMode = 'editor' | 'graph' | 'split';
-export type SidebarTab = 'files' | 'search' | 'sync';
 
 interface UIState {
-  // Vault state
-  vaultPath: string | null;
-  isVaultOpen: boolean;
-
-  // View state
-  viewMode: ViewMode;
+  // Sidebar
   sidebarOpen: boolean;
-  sidebarTab: SidebarTab;
   sidebarWidth: number;
-  graphPanelWidth: number;
-  linkPanelOpen: boolean;
-  linkPanelWidth: number;
 
-  // Selection state
+  // View mode
+  viewMode: ViewMode;
+
+  // Selected items
   selectedNoteId: string | null;
-  selectedNodeId: string | null;
 
-  // Modal state
-  isSettingsOpen: boolean;
-  isVaultSelectorOpen: boolean;
+  // Contextual panel
+  contextualPanelOpen: boolean;
+
+  // Theme
+  theme: 'light' | 'dark' | 'system';
+
+  // Focus mode
+  focusModeActive: boolean;
+
+  // Quick search
+  quickSearchOpen: boolean;
 
   // Actions
-  setVaultPath: (path: string | null) => void;
-  setIsVaultOpen: (isOpen: boolean) => void;
-  setViewMode: (mode: ViewMode) => void;
-  setSidebarOpen: (open: boolean) => void;
-  setSidebarTab: (tab: SidebarTab) => void;
+  toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
-  setGraphPanelWidth: (width: number) => void;
-  setLinkPanelOpen: (open: boolean) => void;
-  setLinkPanelWidth: (width: number) => void;
+  setViewMode: (mode: ViewMode) => void;
   setSelectedNoteId: (id: string | null) => void;
-  setSelectedNodeId: (id: string | null) => void;
-  setIsSettingsOpen: (open: boolean) => void;
-  setIsVaultSelectorOpen: (open: boolean) => void;
+  toggleContextualPanel: () => void;
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  toggleFocusMode: () => void;
+  setQuickSearchOpen: (open: boolean) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
-  // Initial vault state
-  vaultPath: null,
-  isVaultOpen: false,
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      // Initial state
+      sidebarOpen: true,
+      sidebarWidth: 280,
+      viewMode: 'editor',
+      selectedNoteId: null,
+      contextualPanelOpen: false,
+      theme: 'system',
+      focusModeActive: false,
+      quickSearchOpen: false,
 
-  // Initial view state
-  viewMode: 'split',
-  sidebarOpen: true,
-  sidebarTab: 'files',
-  sidebarWidth: 280,
-  graphPanelWidth: 400,
-  linkPanelOpen: false,
-  linkPanelWidth: 280,
-
-  // Initial selection state
-  selectedNoteId: null,
-  selectedNodeId: null,
-
-  // Initial modal state
-  isSettingsOpen: false,
-  isVaultSelectorOpen: true,
-
-  // Actions
-  setVaultPath: (path) => set({ vaultPath: path }),
-  setIsVaultOpen: (isOpen) => set({ isVaultOpen: isOpen }),
-  setViewMode: (mode) => set({ viewMode: mode }),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setSidebarTab: (tab) => set({ sidebarTab: tab }),
-  setSidebarWidth: (width) => set({ sidebarWidth: width }),
-  setGraphPanelWidth: (width) => set({ graphPanelWidth: width }),
-  setLinkPanelOpen: (open) => set({ linkPanelOpen: open }),
-  setLinkPanelWidth: (width) => set({ linkPanelWidth: width }),
-  setSelectedNoteId: (id) => set({ selectedNoteId: id }),
-  setSelectedNodeId: (id) => set({ selectedNodeId: id }),
-  setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
-  setIsVaultSelectorOpen: (open) => set({ isVaultSelectorOpen: open }),
-}));
+      // Actions
+      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      setSidebarWidth: (width) => set({ sidebarWidth: width }),
+      setViewMode: (mode) => set({ viewMode: mode }),
+      setSelectedNoteId: (id) => set({ selectedNoteId: id }),
+      toggleContextualPanel: () => set((state) => ({ contextualPanelOpen: !state.contextualPanelOpen })),
+      setTheme: (theme) => set({ theme }),
+      toggleFocusMode: () => set((state) => ({ focusModeActive: !state.focusModeActive })),
+      setQuickSearchOpen: (open) => set({ quickSearchOpen: open }),
+    }),
+    {
+      name: 'graphnotes-ui-storage',
+      partialize: (state) => ({
+        sidebarOpen: state.sidebarOpen,
+        sidebarWidth: state.sidebarWidth,
+        viewMode: state.viewMode,
+        theme: state.theme,
+      }),
+    }
+  )
+);

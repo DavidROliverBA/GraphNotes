@@ -1,249 +1,288 @@
-// src/components/Graph/GraphControls.tsx
+import { useState } from 'react';
+import {
+  Filter,
+  Search,
+  X,
+  Grid3X3,
+  GitBranch,
+  Circle,
+  LayoutGrid,
+} from 'lucide-react';
+import { useReactFlow } from '@xyflow/react';
+import { useGraph } from '../../hooks/useGraph';
+import { LayoutType } from '../../lib/graph/types';
 
-import React, { useCallback, useState } from 'react';
-import { useSigma } from '@react-sigma/core';
-import { DEFAULT_RELATIONSHIP_TYPES } from '../../lib/graph/types';
+export function GraphControls() {
+  const { fitView, setNodes, getNodes } = useReactFlow();
+  const {
+    stats,
+    filter,
+    setFilter,
+    clearFilter,
+    layoutType,
+    setLayoutType,
+    relationshipPresets,
+  } = useGraph();
 
-interface GraphControlsProps {
-  onFilterChange?: (filters: GraphFilters) => void;
-}
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-export interface GraphFilters {
-  relationshipTypes: string[];
-  showOrphans: boolean;
-  minConnections: number;
-}
-
-const GraphControls: React.FC<GraphControlsProps> = ({ onFilterChange }) => {
-  const sigma = useSigma();
-  const [filters, setFilters] = useState<GraphFilters>({
-    relationshipTypes: DEFAULT_RELATIONSHIP_TYPES.map((r) => r.name),
-    showOrphans: true,
-    minConnections: 0,
-  });
-  const [showFilters, setShowFilters] = useState(false);
-
-  const handleZoomIn = useCallback(() => {
-    const camera = sigma.getCamera();
-    camera.animatedZoom({ duration: 200 });
-  }, [sigma]);
-
-  const handleZoomOut = useCallback(() => {
-    const camera = sigma.getCamera();
-    camera.animatedUnzoom({ duration: 200 });
-  }, [sigma]);
-
-  const handleFitView = useCallback(() => {
-    const camera = sigma.getCamera();
-    camera.animatedReset({ duration: 300 });
-  }, [sigma]);
-
-  const handleRelayout = useCallback(() => {
-    const graph = sigma.getGraph();
-    const nodes = graph.nodes();
-
-    // Reset positions randomly and let force layout run
-    nodes.forEach((node) => {
-      graph.setNodeAttribute(node, 'x', Math.random() * 100 - 50);
-      graph.setNodeAttribute(node, 'y', Math.random() * 100 - 50);
-    });
-
-    // Simple force-directed layout
-    const iterations = 100;
-    const repulsionStrength = 100;
-    const attractionStrength = 0.01;
-    const centerGravity = 0.01;
-
-    for (let i = 0; i < iterations; i++) {
-      const forces: Record<string, { x: number; y: number }> = {};
-
-      nodes.forEach((node) => {
-        forces[node] = { x: 0, y: 0 };
-      });
-
-      // Repulsion
-      for (let j = 0; j < nodes.length; j++) {
-        for (let k = j + 1; k < nodes.length; k++) {
-          const nodeA = nodes[j];
-          const nodeB = nodes[k];
-          const posA = graph.getNodeAttributes(nodeA);
-          const posB = graph.getNodeAttributes(nodeB);
-
-          const dx = posB.x - posA.x;
-          const dy = posB.y - posA.y;
-          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-
-          const force = repulsionStrength / (distance * distance);
-          const fx = (dx / distance) * force;
-          const fy = (dy / distance) * force;
-
-          forces[nodeA].x -= fx;
-          forces[nodeA].y -= fy;
-          forces[nodeB].x += fx;
-          forces[nodeB].y += fy;
-        }
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim()) {
+      setFilter({ ...filter, searchQuery: query });
+    } else {
+      const { searchQuery: _, ...rest } = filter;
+      if (Object.keys(rest).length > 0) {
+        setFilter(rest);
+      } else {
+        clearFilter();
       }
+    }
+  };
 
-      // Attraction
-      graph.forEachEdge((_, __, source, target) => {
-        const posA = graph.getNodeAttributes(source);
-        const posB = graph.getNodeAttributes(target);
+  const handleLayoutChange = (type: LayoutType) => {
+    setLayoutType(type);
+    applyLayout(type);
+  };
 
-        const dx = posB.x - posA.x;
-        const dy = posB.y - posA.y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  const applyLayout = (type: LayoutType) => {
+    const nodes = getNodes();
+    if (nodes.length === 0) return;
 
-        const force = distance * attractionStrength;
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
+    let newNodes;
 
-        forces[source].x += fx;
-        forces[source].y += fy;
-        forces[target].x -= fx;
-        forces[target].y -= fy;
-      });
-
-      // Gravity
-      nodes.forEach((node) => {
-        const pos = graph.getNodeAttributes(node);
-        forces[node].x -= pos.x * centerGravity;
-        forces[node].y -= pos.y * centerGravity;
-      });
-
-      // Apply
-      nodes.forEach((node) => {
-        const pos = graph.getNodeAttributes(node);
-        graph.setNodeAttribute(node, 'x', pos.x + forces[node].x);
-        graph.setNodeAttribute(node, 'y', pos.y + forces[node].y);
-      });
+    switch (type) {
+      case 'grid':
+        newNodes = applyGridLayout(nodes);
+        break;
+      case 'hierarchical':
+        newNodes = applyHierarchicalLayout(nodes);
+        break;
+      case 'radial':
+        newNodes = applyRadialLayout(nodes);
+        break;
+      case 'force':
+      default:
+        newNodes = applyForceLayout(nodes);
+        break;
     }
 
-    sigma.refresh();
-    handleFitView();
-  }, [sigma, handleFitView]);
+    setNodes(newNodes);
+    setTimeout(() => fitView({ padding: 0.2 }), 100);
+  };
 
-  const toggleRelationshipFilter = useCallback(
-    (relName: string) => {
-      setFilters((prev) => {
-        const newTypes = prev.relationshipTypes.includes(relName)
-          ? prev.relationshipTypes.filter((r) => r !== relName)
-          : [...prev.relationshipTypes, relName];
-        const newFilters = { ...prev, relationshipTypes: newTypes };
-        onFilterChange?.(newFilters);
-        return newFilters;
-      });
-    },
-    [onFilterChange]
-  );
+  const applyGridLayout = (nodes: ReturnType<typeof getNodes>) => {
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+    const spacing = 250;
 
-  const toggleOrphans = useCallback(() => {
-    setFilters((prev) => {
-      const newFilters = { ...prev, showOrphans: !prev.showOrphans };
-      onFilterChange?.(newFilters);
-      return newFilters;
+    return nodes.map((node, index) => ({
+      ...node,
+      position: {
+        x: (index % cols) * spacing,
+        y: Math.floor(index / cols) * spacing,
+      },
+    }));
+  };
+
+  const applyHierarchicalLayout = (nodes: ReturnType<typeof getNodes>) => {
+    const spacing = { x: 250, y: 150 };
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+
+    return nodes.map((node, index) => ({
+      ...node,
+      position: {
+        x: (index % cols) * spacing.x,
+        y: Math.floor(index / cols) * spacing.y,
+      },
+    }));
+  };
+
+  const applyRadialLayout = (nodes: ReturnType<typeof getNodes>) => {
+    const centerX = 400;
+    const centerY = 300;
+    const radius = Math.max(150, nodes.length * 20);
+
+    return nodes.map((node, index) => {
+      const angle = (2 * Math.PI * index) / nodes.length;
+      return {
+        ...node,
+        position: {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+        },
+      };
     });
-  }, [onFilterChange]);
+  };
+
+  const applyForceLayout = (nodes: ReturnType<typeof getNodes>) => {
+    // Simple force-directed-ish layout
+    const spacing = 200;
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+
+    return nodes.map((node, index) => {
+      // Add some randomness for organic feel
+      const jitterX = (Math.random() - 0.5) * 50;
+      const jitterY = (Math.random() - 0.5) * 50;
+
+      return {
+        ...node,
+        position: {
+          x: (index % cols) * spacing + jitterX,
+          y: Math.floor(index / cols) * spacing + jitterY,
+        },
+      };
+    });
+  };
+
+  const layoutOptions: { type: LayoutType; label: string; icon: typeof Grid3X3 }[] = [
+    { type: 'force', label: 'Force', icon: Circle },
+    { type: 'grid', label: 'Grid', icon: Grid3X3 },
+    { type: 'hierarchical', label: 'Tree', icon: GitBranch },
+    { type: 'radial', label: 'Radial', icon: LayoutGrid },
+  ];
+
+  const hasActiveFilter = Object.keys(filter).length > 0;
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Main controls */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={handleZoomIn}
-          className="p-2 bg-sidebar-hover rounded hover:bg-sidebar-active transition-colors"
-          title="Zoom in"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-            <path d="M11 8v6M8 11h6" />
-          </svg>
-        </button>
-        <button
-          onClick={handleZoomOut}
-          className="p-2 bg-sidebar-hover rounded hover:bg-sidebar-active transition-colors"
-          title="Zoom out"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-            <path d="M8 11h6" />
-          </svg>
-        </button>
-        <button
-          onClick={handleFitView}
-          className="p-2 bg-sidebar-hover rounded hover:bg-sidebar-active transition-colors"
-          title="Fit view"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-          </svg>
-        </button>
-        <button
-          onClick={handleRelayout}
-          className="p-2 bg-sidebar-hover rounded hover:bg-sidebar-active transition-colors"
-          title="Re-layout graph"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-            <path d="M8 16H3v5" />
-          </svg>
-        </button>
-        <div className="w-px h-6 bg-sidebar-hover mx-1" />
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`p-2 rounded transition-colors ${
-            showFilters
-              ? 'bg-accent-primary/20 text-accent-primary'
-              : 'bg-sidebar-hover hover:bg-sidebar-active'
-          }`}
-          title="Toggle filters"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-          </svg>
-        </button>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          placeholder="Search nodes..."
+          className="w-48 pl-8 pr-8 py-1.5 text-sm bg-bg-elevated border border-border-subtle rounded-md focus:outline-none focus:border-accent-primary"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => handleSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
+      {/* Layout buttons */}
+      <div className="flex items-center gap-1 p-1 bg-bg-elevated border border-border-subtle rounded-md">
+        {layoutOptions.map(({ type, label, icon: Icon }) => (
+          <button
+            key={type}
+            onClick={() => handleLayoutChange(type)}
+            className={`
+              flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors
+              ${
+                layoutType === type
+                  ? 'bg-accent-primary text-white'
+                  : 'text-text-secondary hover:bg-bg-tertiary'
+              }
+            `}
+            title={`${label} layout`}
+          >
+            <Icon className="w-3 h-3" />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Filter toggle */}
+      <button
+        onClick={() => setShowFilterPanel(!showFilterPanel)}
+        className={`
+          flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors
+          ${
+            hasActiveFilter
+              ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
+              : 'bg-bg-elevated border-border-subtle text-text-secondary hover:bg-bg-tertiary'
+          }
+        `}
+      >
+        <Filter className="w-3 h-3" />
+        <span>Filter</span>
+        {hasActiveFilter && (
+          <span className="ml-1 px-1.5 py-0.5 bg-accent-primary text-white rounded-full text-[10px]">
+            Active
+          </span>
+        )}
+      </button>
+
       {/* Filter panel */}
-      {showFilters && (
-        <div className="p-3 bg-sidebar-hover/50 rounded-lg text-xs">
-          <div className="font-medium mb-2 text-editor-text">Relationship Types</div>
-          <div className="flex flex-wrap gap-1 mb-3">
-            {DEFAULT_RELATIONSHIP_TYPES.map((rel) => (
+      {showFilterPanel && (
+        <div className="absolute top-full right-0 mt-1 w-64 p-3 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-10">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-text-primary">Filters</h4>
+            {hasActiveFilter && (
               <button
-                key={rel.name}
-                onClick={() => toggleRelationshipFilter(rel.name)}
-                className={`px-2 py-1 rounded transition-colors ${
-                  filters.relationshipTypes.includes(rel.name)
-                    ? 'text-sidebar-bg'
-                    : 'bg-sidebar-hover text-gray-500'
-                }`}
-                style={{
-                  backgroundColor: filters.relationshipTypes.includes(rel.name)
-                    ? rel.colour
-                    : undefined,
-                }}
+                onClick={clearFilter}
+                className="text-xs text-accent-primary hover:underline"
               >
-                {rel.name}
+                Clear all
               </button>
-            ))}
+            )}
           </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.showOrphans}
-              onChange={toggleOrphans}
-              className="rounded border-gray-500"
-            />
-            <span className="text-editor-text">Show orphan nodes</span>
-          </label>
+
+          {/* Relationship type filter */}
+          <div className="mb-3">
+            <label className="block text-xs text-text-tertiary mb-1">
+              Relationship Type
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {relationshipPresets.slice(0, 4).map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => {
+                    const current = filter.includeRelationships || [];
+                    const isActive = current.includes(preset.name);
+                    setFilter({
+                      ...filter,
+                      includeRelationships: isActive
+                        ? current.filter((r) => r !== preset.name)
+                        : [...current, preset.name],
+                    });
+                  }}
+                  className={`
+                    flex items-center gap-1 px-2 py-1 text-[10px] rounded border transition-colors
+                    ${
+                      filter.includeRelationships?.includes(preset.name)
+                        ? 'border-accent-primary bg-accent-primary/10 text-accent-primary'
+                        : 'border-border-subtle text-text-secondary hover:bg-bg-tertiary'
+                    }
+                  `}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: preset.appearance.colour }}
+                  />
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="pt-2 border-t border-border-subtle">
+            <div className="text-xs text-text-tertiary">
+              <div className="flex justify-between">
+                <span>Total nodes:</span>
+                <span className="text-text-secondary">{stats.totalNodes}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total edges:</span>
+                <span className="text-text-secondary">{stats.totalEdges}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Orphaned:</span>
+                <span className="text-text-secondary">{stats.orphanedNodes}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
-};
+}
 
 export default GraphControls;

@@ -1,214 +1,639 @@
-// src/components/Editor/Editor.tsx
-
-import { useEffect, useCallback, useMemo, useRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Link from '@tiptap/extension-link';
-import Typography from '@tiptap/extension-typography';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
-
-import { useUIStore } from '../../stores/uiStore';
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
+import YooptaEditor, { createYooptaEditor, YooptaContentValue } from '@yoopta/editor';
+import Paragraph from '@yoopta/paragraph';
+import { HeadingOne, HeadingTwo, HeadingThree } from '@yoopta/headings';
+import { BulletedList, NumberedList, TodoList } from '@yoopta/lists';
+import Blockquote from '@yoopta/blockquote';
+import Callout from '@yoopta/callout';
+import Code from '@yoopta/code';
+import Link from '@yoopta/link';
+import ActionMenuList, { DefaultActionMenuRender } from '@yoopta/action-menu-list';
+import Toolbar, { DefaultToolbarRender } from '@yoopta/toolbar';
+import { Bold, Italic, Underline, Strike, CodeMark, Highlight } from '@yoopta/marks';
+import { Note } from '../../lib/notes/types';
+import { useNotes } from '../../hooks/useNotes';
 import { useNoteStore } from '../../stores/noteStore';
-import { debounce } from '../../lib/utils/debounce';
-import { writeFile } from '../../lib/tauri/commands';
-import { serializeNote, htmlToMarkdown, markdownToHtml } from '../../lib/notes/noteParser';
-import EditorToolbar from './EditorToolbar';
-import { Wikilink, WikilinkSuggestionItem } from './extensions/wikilink';
-import { WikilinkSuggestionExtension } from './extensions/WikilinkSuggestionExtension';
-
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useUIStore } from '../../stores/uiStore';
+import { EditorToolbar } from './EditorToolbar';
+import { WikilinkSuggestion } from './WikilinkSuggestion';
+import { createWikilink, resolveWikilinkTarget, extractWikilinks } from '../../lib/graph/linkParser';
 import './editor.css';
-import 'tippy.js/dist/tippy.css';
 
-const lowlight = createLowlight(common);
+// Define plugins
+const plugins = [
+  Paragraph,
+  HeadingOne,
+  HeadingTwo,
+  HeadingThree,
+  BulletedList,
+  NumberedList,
+  TodoList,
+  Blockquote,
+  Callout,
+  Code,
+  Link,
+];
+
+// Define marks (inline formatting)
+const MARKS = [Bold, Italic, Underline, Strike, CodeMark, Highlight];
+
+// Define tools
+const TOOLS = {
+  ActionMenu: {
+    render: DefaultActionMenuRender,
+    tool: ActionMenuList,
+  },
+  Toolbar: {
+    render: DefaultToolbarRender,
+    tool: Toolbar,
+  },
+};
 
 interface EditorProps {
-  initialContent?: string;
+  note: Note;
   onSave?: (content: string) => void;
 }
 
-const Editor: React.FC<EditorProps> = ({ initialContent = '', onSave }) => {
-  const { selectedNoteId, vaultPath, setSelectedNoteId } = useUIStore();
-  const { getNoteById, updateNote, notes } = useNoteStore();
+export function Editor({ note, onSave }: EditorProps) {
+  const editor = useMemo(() => createYooptaEditor(), []);
+  const { saving, updateContentWithAutoSave } = useNotes();
+  const { createNote, notesList } = useNoteStore();
+  const { currentVault } = useSettingsStore();
+  const { setSelectedNoteId } = useUIStore();
+  const [localContent, setLocalContent] = useState<YooptaContentValue | undefined>();
+  const isInitialMount = useRef(true);
+  const currentNoteIdRef = useRef(note.id);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
-  const selectedNote = selectedNoteId ? getNoteById(selectedNoteId) : null;
+  // Wikilink suggestion state
+  const [showWikilinkSuggestion, setShowWikilinkSuggestion] = useState(false);
+  const [wikilinkQuery, setWikilinkQuery] = useState('');
+  const [wikilinkPosition, setWikilinkPosition] = useState({ top: 0, left: 0 });
+  const wikilinkStartRef = useRef<{ node: Node; offset: number } | null>(null);
 
-  // Use refs for handlers to avoid recreating editor extensions
-  const wikilinkClickRef = useRef<(target: string) => void>(() => {});
-  const wikilinkSuggestionsRef = useRef<(query: string) => WikilinkSuggestionItem[]>(() => []);
+  // Convert markdown content to Yoopta format
+  const initialContent = useMemo(() => {
+    return markdownToYoopta(note.content);
+  }, [note.id]); // Only recompute when note changes
 
-  // Update the click ref when notes/setSelectedNoteId changes
+  // Initialize editor when note changes
   useEffect(() => {
-    wikilinkClickRef.current = (target: string) => {
-      // Find note by title or filepath
-      for (const note of notes.values()) {
-        if (
-          note.frontmatter.title.toLowerCase() === target.toLowerCase() ||
-          note.filepath.toLowerCase().includes(target.toLowerCase())
-        ) {
-          setSelectedNoteId(note.id);
-          return;
-        }
-      }
-      console.log('Note not found:', target);
-    };
-  }, [notes, setSelectedNoteId]);
+    if (note.id !== currentNoteIdRef.current) {
+      currentNoteIdRef.current = note.id;
+      const content = markdownToYoopta(note.content);
+      setLocalContent(content);
+      editor.setEditorValue(content);
+    }
+  }, [note.id, note.content, editor]);
 
-  // Update the suggestions ref when notes/selectedNoteId changes
+  // Set initial content on mount
   useEffect(() => {
-    wikilinkSuggestionsRef.current = (query: string): WikilinkSuggestionItem[] => {
-      const queryLower = query.toLowerCase();
-      const results: WikilinkSuggestionItem[] = [];
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      setLocalContent(initialContent);
+    }
+  }, [initialContent]);
 
-      for (const note of notes.values()) {
-        // Skip current note
-        if (note.id === selectedNoteId) continue;
+  // Handle content changes
+  const handleChange = useCallback(
+    (value: YooptaContentValue) => {
+      setLocalContent(value);
 
-        const titleMatch = note.frontmatter.title.toLowerCase().includes(queryLower);
-        const filepathMatch = note.filepath.toLowerCase().includes(queryLower);
+      // Convert back to markdown
+      const markdown = yooptaToMarkdown(value);
+      updateContentWithAutoSave(markdown);
 
-        if (!query || titleMatch || filepathMatch) {
-          results.push({
-            id: note.id,
-            title: note.frontmatter.title,
-            filepath: note.filepath,
-          });
-        }
+      if (onSave) {
+        onSave(markdown);
       }
-
-      // Sort by title match first, then alphabetically
-      return results
-        .sort((a, b) => {
-          const aStartsWith = a.title.toLowerCase().startsWith(queryLower);
-          const bStartsWith = b.title.toLowerCase().startsWith(queryLower);
-          if (aStartsWith && !bStartsWith) return -1;
-          if (!aStartsWith && bStartsWith) return 1;
-          return a.title.localeCompare(b.title);
-        })
-        .slice(0, 10); // Limit to 10 results
-    };
-  }, [notes, selectedNoteId]);
-
-  // Stable callback that uses the ref
-  const handleWikilinkClick = useCallback((target: string) => {
-    wikilinkClickRef.current(target);
-  }, []);
-
-  // Stable callback that uses the ref
-  const getWikilinkSuggestions = useCallback((query: string): WikilinkSuggestionItem[] => {
-    return wikilinkSuggestionsRef.current(query);
-  }, []);
-
-  // Debounced save function
-  const debouncedSave = useCallback(
-    debounce(async (htmlContent: string) => {
-      if (!selectedNote || !vaultPath) return;
-
-      // Convert HTML back to markdown for storage
-      const markdownContent = htmlToMarkdown(htmlContent);
-
-      const fullPath = `${vaultPath}/${selectedNote.filepath}`;
-      const updatedNote = {
-        ...selectedNote,
-        content: markdownContent,
-        frontmatter: {
-          ...selectedNote.frontmatter,
-          modified: new Date().toISOString(),
-        },
-      };
-
-      const serialized = serializeNote(updatedNote);
-
-      try {
-        await writeFile(fullPath, serialized);
-        updateNote(selectedNote.id, {
-          content: markdownContent,
-          rawContent: serialized,
-          frontmatter: updatedNote.frontmatter,
-        });
-        onSave?.(markdownContent);
-      } catch (error) {
-        console.error('Failed to save note:', error);
-      }
-    }, 1000),
-    [selectedNote, vaultPath, updateNote, onSave]
+    },
+    [updateContentWithAutoSave, onSave]
   );
 
-  // Memoize extensions to prevent duplicate extension warnings
-  const extensions = useMemo(() => [
-    StarterKit.configure({
-      codeBlock: false, // We use CodeBlockLowlight instead
-      heading: {
-        levels: [1, 2, 3, 4, 5, 6],
-      },
-    }),
-    Placeholder.configure({
-      placeholder: 'Start writing...',
-    }),
-    TaskList,
-    TaskItem.configure({
-      nested: true,
-    }),
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: {
-        class: 'text-accent-primary underline',
-      },
-    }),
-    Typography,
-    CodeBlockLowlight.configure({
-      lowlight,
-    }),
-    Wikilink.configure({
-      onWikilinkClick: handleWikilinkClick,
-    }),
-    WikilinkSuggestionExtension.configure({
-      getItems: getWikilinkSuggestions,
-    }),
-  ], [handleWikilinkClick, getWikilinkSuggestions]);
+  // Get caret position for popup positioning
+  const getCaretPosition = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
 
-  const editor = useEditor({
-    extensions,
-    content: initialContent,
-    editorProps: {
-      attributes: {
-        class: 'prose prose-invert max-w-none focus:outline-none min-h-full',
-      },
-    },
-    onUpdate: ({ editor }) => {
-      const content = editor.getHTML();
-      debouncedSave(content);
-    },
-  });
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
 
-  // Load note content when selected note changes
+    return {
+      top: rect.bottom + window.scrollY + 4,
+      left: rect.left + window.scrollX,
+    };
+  }, []);
+
+  // Handle input to detect [[ trigger
+  const handleInput = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const textNode = range.startContainer;
+
+    if (textNode.nodeType !== Node.TEXT_NODE) return;
+
+    const text = textNode.textContent || '';
+    const cursorPos = range.startOffset;
+
+    // Look for [[ before cursor
+    const textBeforeCursor = text.slice(0, cursorPos);
+    const lastOpenBrackets = textBeforeCursor.lastIndexOf('[[');
+
+    if (lastOpenBrackets !== -1) {
+      // Check if there's a closing ]] between [[ and cursor
+      const textAfterOpen = textBeforeCursor.slice(lastOpenBrackets + 2);
+      if (!textAfterOpen.includes(']]')) {
+        // We're inside a wikilink
+        const query = textAfterOpen;
+
+        if (!showWikilinkSuggestion) {
+          // Save the position where [[ started
+          wikilinkStartRef.current = { node: textNode, offset: lastOpenBrackets };
+        }
+
+        setWikilinkQuery(query);
+        const pos = getCaretPosition();
+        if (pos) {
+          setWikilinkPosition(pos);
+        }
+        setShowWikilinkSuggestion(true);
+        return;
+      }
+    }
+
+    // No active wikilink trigger
+    if (showWikilinkSuggestion) {
+      setShowWikilinkSuggestion(false);
+      wikilinkStartRef.current = null;
+    }
+  }, [showWikilinkSuggestion, getCaretPosition]);
+
+  // Handle wikilink selection
+  const handleWikilinkSelect = useCallback((title: string, _filepath: string) => {
+    const selection = window.getSelection();
+    if (!selection || !wikilinkStartRef.current) {
+      setShowWikilinkSuggestion(false);
+      return;
+    }
+
+    const { node, offset } = wikilinkStartRef.current;
+    const text = node.textContent || '';
+    const cursorPos = selection.getRangeAt(0).startOffset;
+
+    // Replace [[query with [[title]]
+    const wikilink = createWikilink(title);
+    const newText = text.slice(0, offset) + wikilink + text.slice(cursorPos);
+    node.textContent = newText;
+
+    // Move cursor after the wikilink
+    const newRange = document.createRange();
+    newRange.setStart(node, offset + wikilink.length);
+    newRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+
+    // Trigger input event to sync with Yoopta
+    const inputEvent = new Event('input', { bubbles: true });
+    node.parentElement?.dispatchEvent(inputEvent);
+
+    setShowWikilinkSuggestion(false);
+    wikilinkStartRef.current = null;
+  }, []);
+
+  // Handle creating a new note from wikilink
+  const handleWikilinkCreateNew = useCallback(async (title: string) => {
+    if (!currentVault) {
+      setShowWikilinkSuggestion(false);
+      return;
+    }
+
+    try {
+      // Create the new note
+      const filename = title.trim().replace(/[/\\?%*:|"<>]/g, '-');
+      const newNote = await createNote(currentVault.path, filename, title);
+
+      // Insert the wikilink
+      handleWikilinkSelect(title, newNote.filepath);
+
+      // Optionally navigate to the new note
+      // setSelectedNoteId(newNote.filepath);
+    } catch (err) {
+      console.error('Failed to create note:', err);
+      setShowWikilinkSuggestion(false);
+    }
+  }, [currentVault, createNote, handleWikilinkSelect]);
+
+  // Handle closing wikilink suggestion
+  const handleWikilinkClose = useCallback(() => {
+    setShowWikilinkSuggestion(false);
+    wikilinkStartRef.current = null;
+  }, []);
+
+  // Listen for input events in the editor
   useEffect(() => {
-    if (!editor || !selectedNote) return;
+    const container = editorContainerRef.current;
+    if (!container) return;
 
-    // Convert markdown to HTML for the editor
-    const htmlContent = markdownToHtml(selectedNote.content || '');
-    editor.commands.setContent(htmlContent);
-  }, [editor, selectedNote?.id]);
+    const handleInputEvent = () => {
+      // Small delay to let the DOM update
+      requestAnimationFrame(handleInput);
+    };
 
-  if (!editor) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        <p>Loading editor...</p>
-      </div>
-    );
-  }
+    container.addEventListener('input', handleInputEvent);
+    container.addEventListener('keyup', handleInputEvent);
+
+    return () => {
+      container.removeEventListener('input', handleInputEvent);
+      container.removeEventListener('keyup', handleInputEvent);
+    };
+  }, [handleInput]);
+
+  // Close suggestion on click outside
+  useEffect(() => {
+    if (!showWikilinkSuggestion) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.wikilink-suggestion')) {
+        handleWikilinkClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showWikilinkSuggestion, handleWikilinkClose]);
+
+  // Handle click on wikilinks (Cmd/Ctrl+click to navigate)
+  const handleEditorClick = useCallback((e: React.MouseEvent) => {
+    // Only navigate on Cmd+click (Mac) or Ctrl+click (Windows/Linux)
+    if (!e.metaKey && !e.ctrlKey) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const textNode = range.startContainer;
+
+    if (textNode.nodeType !== Node.TEXT_NODE) return;
+
+    const text = textNode.textContent || '';
+    const cursorPos = range.startOffset;
+
+    // Find wikilinks in the text
+    const wikilinks = extractWikilinks(text);
+
+    // Check if cursor is inside a wikilink
+    for (const wikilink of wikilinks) {
+      if (cursorPos >= wikilink.start && cursorPos <= wikilink.end) {
+        // Found a wikilink - try to resolve it
+        const notesData = notesList.map((n) => ({
+          id: n.id,
+          title: n.title,
+          filepath: n.filepath,
+        }));
+
+        const resolved = resolveWikilinkTarget(wikilink.target, notesData);
+        if (resolved) {
+          e.preventDefault();
+          setSelectedNoteId(resolved.filepath);
+        }
+        break;
+      }
+    }
+  }, [notesList, setSelectedNoteId]);
 
   return (
-    <div className="flex flex-col h-full">
-      <EditorToolbar editor={editor} />
-      <div className="flex-1 overflow-auto p-4">
-        <EditorContent editor={editor} className="h-full" />
+    <div className="editor-container h-full flex flex-col bg-bg-primary">
+      <EditorToolbar
+        title={note.frontmatter.title}
+        saving={saving}
+        modified={note.frontmatter.modified}
+      />
+      <div ref={editorContainerRef} onClick={handleEditorClick} className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="max-w-3xl mx-auto">
+          <YooptaEditor
+            editor={editor}
+            plugins={plugins}
+            tools={TOOLS}
+            marks={MARKS}
+            value={localContent}
+            onChange={handleChange}
+            autoFocus
+            placeholder="Start writing..."
+            className="yoopta-editor"
+          />
+        </div>
       </div>
+
+      {/* Wikilink suggestion popup */}
+      {showWikilinkSuggestion && (
+        <div className="wikilink-suggestion">
+          <WikilinkSuggestion
+            query={wikilinkQuery}
+            position={wikilinkPosition}
+            onSelect={handleWikilinkSelect}
+            onCreateNew={handleWikilinkCreateNew}
+            onClose={handleWikilinkClose}
+          />
+        </div>
+      )}
     </div>
   );
-};
+}
+
+// Convert markdown to Yoopta format
+function markdownToYoopta(markdown: string): YooptaContentValue {
+  const lines = markdown.split('\n');
+  const content: YooptaContentValue = {};
+  let blockIndex = 0;
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Skip empty lines at the start
+    if (!trimmed && blockIndex === 0) {
+      i++;
+      continue;
+    }
+
+    // Heading 1
+    if (trimmed.startsWith('# ')) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'HeadingOne',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'heading-one',
+            children: [{ text: trimmed.slice(2) }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Heading 2
+    if (trimmed.startsWith('## ')) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'HeadingTwo',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'heading-two',
+            children: [{ text: trimmed.slice(3) }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Heading 3
+    if (trimmed.startsWith('### ')) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'HeadingThree',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'heading-three',
+            children: [{ text: trimmed.slice(4) }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('> ')) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'Blockquote',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'blockquote',
+            children: [{ text: trimmed.slice(2) }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Bullet list
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'BulletedList',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'bulleted-list',
+            children: [{ text: trimmed.slice(2) }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Numbered list
+    const numberedMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+    if (numberedMatch) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'NumberedList',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'numbered-list',
+            children: [{ text: numberedMatch[1] }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Todo list
+    const todoMatch = trimmed.match(/^- \[([ x])\]\s+(.*)$/i);
+    if (todoMatch) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'TodoList',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'todo-list',
+            props: { checked: todoMatch[1].toLowerCase() === 'x' },
+            children: [{ text: todoMatch[2] }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Code block
+    if (trimmed.startsWith('```')) {
+      const language = trimmed.slice(3).trim() || 'plaintext';
+      let codeContent = '';
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeContent += (codeContent ? '\n' : '') + lines[i];
+        i++;
+      }
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'Code',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'code',
+            props: { language },
+            children: [{ text: codeContent }],
+          },
+        ],
+      };
+      blockIndex++;
+      i++;
+      continue;
+    }
+
+    // Default: paragraph
+    if (trimmed) {
+      content[`block-${blockIndex}`] = {
+        id: `block-${blockIndex}`,
+        type: 'Paragraph',
+        meta: { order: blockIndex, depth: 0 },
+        value: [
+          {
+            id: `element-${blockIndex}`,
+            type: 'paragraph',
+            children: parseInlineMarkdown(trimmed),
+          },
+        ],
+      };
+      blockIndex++;
+    }
+
+    i++;
+  }
+
+  // Ensure at least one empty paragraph
+  if (blockIndex === 0) {
+    content['block-0'] = {
+      id: 'block-0',
+      type: 'Paragraph',
+      meta: { order: 0, depth: 0 },
+      value: [
+        {
+          id: 'element-0',
+          type: 'paragraph',
+          children: [{ text: '' }],
+        },
+      ],
+    };
+  }
+
+  return content;
+}
+
+// Parse inline markdown (bold, italic, code, links, wikilinks)
+function parseInlineMarkdown(text: string): Array<{ text: string; bold?: boolean; italic?: boolean; code?: boolean }> {
+  // For now, just return plain text
+  // TODO: Implement full inline markdown parsing
+  return [{ text }];
+}
+
+// Convert Yoopta format back to markdown
+function yooptaToMarkdown(content: YooptaContentValue): string {
+  const blocks = Object.values(content).sort((a, b) => a.meta.order - b.meta.order);
+  const lines: string[] = [];
+
+  for (const block of blocks) {
+    const text = extractText(block.value);
+
+    switch (block.type) {
+      case 'HeadingOne':
+        lines.push(`# ${text}`);
+        break;
+      case 'HeadingTwo':
+        lines.push(`## ${text}`);
+        break;
+      case 'HeadingThree':
+        lines.push(`### ${text}`);
+        break;
+      case 'Blockquote':
+        lines.push(`> ${text}`);
+        break;
+      case 'BulletedList':
+        lines.push(`- ${text}`);
+        break;
+      case 'NumberedList':
+        lines.push(`1. ${text}`);
+        break;
+      case 'TodoList':
+        const todoElement = block.value?.[0] as { props?: { checked?: boolean } } | undefined;
+        const checked = todoElement?.props?.checked;
+        lines.push(`- [${checked ? 'x' : ' '}] ${text}`);
+        break;
+      case 'Code':
+        const codeElement = block.value?.[0] as { props?: { language?: string } } | undefined;
+        const language = codeElement?.props?.language || '';
+        lines.push(`\`\`\`${language}`);
+        lines.push(text);
+        lines.push('```');
+        break;
+      case 'Callout':
+        lines.push(`> ${text}`);
+        break;
+      default:
+        lines.push(text);
+    }
+  }
+
+  return lines.join('\n\n');
+}
+
+// Extract text from Yoopta value
+function extractText(value: unknown): string {
+  if (!value || !Array.isArray(value)) return '';
+
+  return value
+    .map((element) => {
+      if (element.children) {
+        return element.children
+          .map((child: { text?: string }) => child.text || '')
+          .join('');
+      }
+      return '';
+    })
+    .join('');
+}
 
 export default Editor;

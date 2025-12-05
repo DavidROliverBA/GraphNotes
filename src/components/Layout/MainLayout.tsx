@@ -1,117 +1,146 @@
-// src/components/Layout/MainLayout.tsx
+import { useEffect } from 'react';
+import { useUIStore, ViewMode } from '../../stores/uiStore';
+import { Sidebar } from '../Sidebar/Sidebar';
+import {
+  PanelLeft,
+  PanelLeftClose,
+  FileText,
+  Network,
+  Columns,
+} from 'lucide-react';
 
-import React, { useState, useEffect } from 'react';
-import { useUIStore } from '../../stores/uiStore';
-import { useVaultLoader } from '../../hooks/useVaultLoader';
-import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useDailyNote } from '../../hooks/useDailyNote';
-import { useTheme } from '../../hooks/useTheme';
-import Sidebar from '../Sidebar/Sidebar';
-import EditorPanel from './EditorPanel';
-import GraphPanel from './GraphPanel';
-import VaultSelector from './VaultSelector';
-import { KeyboardShortcutsModal } from '../settings/KeyboardShortcutsPanel';
-import { SettingsPanel } from '../settings/SettingsPanel';
+interface MainLayoutProps {
+  children: React.ReactNode;
+}
 
-const MainLayout: React.FC = () => {
+export function MainLayout({ children }: MainLayoutProps) {
   const {
-    isVaultOpen,
-    isVaultSelectorOpen,
-    viewMode,
     sidebarOpen,
-    sidebarWidth,
-    graphPanelWidth,
+    toggleSidebar,
+    theme,
+    focusModeActive,
+    viewMode,
+    setViewMode,
   } = useUIStore();
 
-  const [showShortcuts, setShowShortcuts] = useState(false);
+  const viewModeOptions: { mode: ViewMode; icon: typeof FileText; label: string }[] = [
+    { mode: 'editor', icon: FileText, label: 'Editor' },
+    { mode: 'graph', icon: Network, label: 'Graph' },
+    { mode: 'split', icon: Columns, label: 'Split' },
+  ];
 
-  // Initialize theme system
-  useTheme();
-
-  // Initialize vault loader to load notes and build graph
-  useVaultLoader();
-
-  // Initialize keyboard shortcuts
-  useKeyboardShortcuts();
-
-  // Initialize daily notes (listens for keyboard shortcut events)
-  useDailyNote();
-
-  // Listen for ? key to show shortcuts
+  // Handle theme
   useEffect(() => {
-    const handleQuestionMark = (e: KeyboardEvent) => {
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        const isEditable = (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable
-        );
-        if (!isEditable) {
-          setShowShortcuts(true);
-        }
-      }
-      if (e.key === 'Escape') {
-        setShowShortcuts(false);
+    const root = document.documentElement;
+
+    if (theme === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.toggle('dark', prefersDark);
+    } else {
+      root.classList.toggle('dark', theme === 'dark');
+    }
+  }, [theme]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + \ to toggle sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
 
-    window.addEventListener('keydown', handleQuestionMark);
-    return () => window.removeEventListener('keydown', handleQuestionMark);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar]);
 
-  // Show vault selector if no vault is open
-  if (!isVaultOpen || isVaultSelectorOpen) {
-    return <VaultSelector />;
+  if (focusModeActive) {
+    return (
+      <div className="h-screen w-screen flex flex-col bg-bg-primary">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-full max-w-[700px] h-full">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-editor-bg">
-      {/* Sidebar */}
-      {sidebarOpen && (
-        <aside
-          className="flex-shrink-0 bg-sidebar-bg border-r border-sidebar-hover"
-          style={{ width: sidebarWidth }}
-        >
-          <Sidebar />
-        </aside>
-      )}
-
-      {/* Main content area */}
-      <main className="flex flex-1 min-w-0 overflow-hidden">
-        {/* Editor Panel */}
-        {(viewMode === 'editor' || viewMode === 'split') && (
-          <div className="flex-1 min-w-0 overflow-hidden">
-            <EditorPanel />
-          </div>
-        )}
-
-        {/* Resizer between editor and graph */}
-        {viewMode === 'split' && (
-          <div className="w-1 bg-sidebar-hover hover:bg-accent-primary cursor-col-resize flex-shrink-0" />
-        )}
-
-        {/* Graph Panel */}
-        {(viewMode === 'graph' || viewMode === 'split') && (
-          <div
-            className="flex-shrink-0 h-full overflow-hidden bg-graph-bg"
-            style={{ width: viewMode === 'split' ? graphPanelWidth : '100%' }}
+    <div className="h-screen w-screen flex flex-col bg-bg-primary overflow-hidden">
+      {/* Title Bar */}
+      <header className="h-7 flex items-center justify-between px-4 bg-bg-secondary border-b border-border-subtle titlebar-drag">
+        <div className="flex items-center gap-2">
+          {/* macOS traffic light space */}
+          <div className="w-16" />
+          <button
+            onClick={toggleSidebar}
+            className="titlebar-no-drag p-1 rounded hover:bg-bg-tertiary transition-colors duration-fast"
+            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
           >
-            <GraphPanel />
+            {sidebarOpen ? (
+              <PanelLeftClose className="w-4 h-4 text-text-secondary" />
+            ) : (
+              <PanelLeft className="w-4 h-4 text-text-secondary" />
+            )}
+          </button>
+        </div>
+        <div className="flex-1 text-center">
+          <span className="text-sm text-text-secondary font-medium">GraphNotes</span>
+        </div>
+        <div className="flex items-center gap-1 titlebar-no-drag">
+          {viewModeOptions.map(({ mode, icon: Icon, label }) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`
+                p-1.5 rounded transition-colors duration-fast
+                ${
+                  viewMode === mode
+                    ? 'bg-accent-primary/10 text-accent-primary'
+                    : 'text-text-tertiary hover:bg-bg-tertiary hover:text-text-secondary'
+                }
+              `}
+              title={label}
+            >
+              <Icon className="w-4 h-4" />
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar */}
+        <aside
+          className={`
+            border-r border-border-subtle bg-bg-secondary
+            transition-all duration-normal ease-out
+            ${sidebarOpen ? 'w-[280px]' : 'w-0'}
+            overflow-hidden flex-shrink-0
+          `}
+        >
+          <div className="w-[280px] h-full">
+            <Sidebar />
           </div>
-        )}
-      </main>
+        </aside>
 
-      {/* Keyboard shortcuts modal */}
-      <KeyboardShortcutsModal
-        isOpen={showShortcuts}
-        onClose={() => setShowShortcuts(false)}
-      />
+        {/* Main Content Area */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          {children}
+        </main>
+      </div>
 
-      {/* Settings panel */}
-      <SettingsPanel />
+      {/* Status Bar */}
+      <footer className="h-6 flex items-center justify-between px-4 bg-bg-secondary border-t border-border-subtle text-xs text-text-tertiary">
+        <div className="flex items-center gap-4">
+          <span>Ready</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span>GraphNotes v0.1.0</span>
+        </div>
+      </footer>
     </div>
   );
-};
-
-export default MainLayout;
+}

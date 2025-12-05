@@ -1,0 +1,158 @@
+/* Graph container */
+.graph-container {
+  background-color: var(--bg-primary);
+}
+
+/* React Flow overrides */
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__node:focus {
+  outline: none;
+}
+
+/* Note node styles */
+.note-node {
+  font-family: var(--font-sans);
+}
+
+.note-node:hover {
+  z-index: 10;
+}
+
+/* Edge styles */
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 3;
+}
+
+/* Edge label */
+.edge-label {
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.edge-label:hover {
+  transform: scale(1.05);
+}
+
+/* Animated edge */
+.animated-edge {
+  animation: dash 1s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Controls */
+.graph-controls {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.graph-controls button {
+  background-color: transparent !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
+}
+
+.graph-controls button:hover {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.graph-controls button svg {
+  fill: currentColor !important;
+}
+
+/* Mini map */
+.graph-minimap {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 0.5rem !important;
+}
+
+.react-flow__minimap-mask {
+  fill: var(--bg-primary) !important;
+  opacity: 0.8 !important;
+}
+
+/* Background */
+.react-flow__background {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Selection box */
+.react-flow__selection {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border: 1px solid var(--accent-primary) !important;
+}
+
+/* Handle styles */
+.react-flow__handle {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle {
+  opacity: 1;
+}
+
+/* Attribution (hide if needed) */
+.react-flow__attribution {
+  display: none;
+}
+
+/* Panel positioning */
+.react-flow__panel {
+  margin: 1rem;
+}
+
+/* Node tooltip on hover */
+.node-tooltip {
+  position: absolute;
+  z-index: 100;
+  padding: 0.75rem;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+  max-width: 250px;
+}
+
+.node-tooltip h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.node-tooltip p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Dark mode specific */
+.dark .graph-container {
+  --rf-background: var(--bg-primary);
+}
+
+/* Focus mode */
+.focus-mode .graph-container {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}

@@ -1,283 +1,141 @@
-// src/hooks/useNotes.ts
-
-import { useCallback, useEffect, useRef } from 'react';
-import { useUIStore } from '../stores/uiStore';
+import { useEffect, useCallback, useRef } from 'react';
 import { useNoteStore } from '../stores/noteStore';
-import { readFile, writeFile, getFileTree } from '../lib/tauri/commands';
-import { parseNote, createEmptyNote, serializeNote } from '../lib/notes/noteParser';
+import { useSettingsStore } from '../stores/settingsStore';
 import { Note } from '../lib/notes/types';
-import { getEventLog, EventLog } from '../lib/sync/EventLog';
+import { debounce } from '../lib/utils/debounce';
 
-/**
- * Simple hash function for content change detection
- */
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash.toString(16);
-}
+const AUTO_SAVE_DELAY = 500; // ms
 
 export function useNotes() {
-  const { vaultPath } = useUIStore();
   const {
     notes,
-    setNotes,
-    addNote,
-    updateNote,
-    deleteNote: removeNoteFromStore,
-    setFileTree,
-    setIsLoading,
-    setError,
+    notesList,
+    currentNote,
+    loading,
+    saving,
+    error,
+    loadNotesFromVault,
+    loadNote,
+    saveNote,
+    createNote,
+    deleteNote,
+    renameNote,
+    setCurrentNote,
+    updateCurrentNoteContent,
+    clearError,
   } = useNoteStore();
 
-  // Event log reference for sync
-  const eventLogRef = useRef<EventLog | null>(null);
+  const { currentVault } = useSettingsStore();
 
-  // Initialize event log when vault changes
+  // Load notes when vault changes
   useEffect(() => {
-    if (!vaultPath) {
-      eventLogRef.current = null;
-      return;
+    if (currentVault) {
+      loadNotesFromVault(currentVault.path);
     }
+  }, [currentVault, loadNotesFromVault]);
 
-    const initEventLog = async () => {
-      try {
-        const eventLog = getEventLog(vaultPath);
-        await eventLog.init();
-        eventLogRef.current = eventLog;
-        console.log('[useNotes] Event log initialized');
-      } catch (error) {
-        console.error('[useNotes] Failed to initialize event log:', error);
+  // Create debounced save function
+  const debouncedSaveRef = useRef(
+    debounce((note: Note) => {
+      saveNote(note);
+    }, AUTO_SAVE_DELAY)
+  );
+
+  // Auto-save when content changes
+  const updateContentWithAutoSave = useCallback(
+    (content: string) => {
+      updateCurrentNoteContent(content);
+
+      if (currentNote) {
+        const updatedNote: Note = {
+          ...currentNote,
+          content,
+        };
+        debouncedSaveRef.current(updatedNote);
       }
-    };
+    },
+    [currentNote, updateCurrentNoteContent]
+  );
 
-    initEventLog();
-  }, [vaultPath]);
+  // Open a note
+  const openNote = useCallback(
+    async (filepath: string) => {
+      return loadNote(filepath);
+    },
+    [loadNote]
+  );
 
-  /**
-   * Load all notes from the vault
-   */
-  const loadVault = useCallback(async () => {
-    if (!vaultPath) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Get file tree
-      const tree = await getFileTree(vaultPath);
-      setFileTree(tree.map(entry => ({
-        name: entry.name,
-        path: entry.path,
-        isDirectory: entry.is_directory,
-        children: entry.children?.map(child => ({
-          name: child.name,
-          path: child.path,
-          isDirectory: child.is_directory,
-        })),
-      })));
-
-      // Load all markdown files
-      const notesMap = new Map<string, Note>();
-
-      const loadNotesRecursively = async (entries: typeof tree) => {
-        for (const entry of entries) {
-          if (entry.is_directory && entry.children) {
-            await loadNotesRecursively(entry.children);
-          } else if (!entry.is_directory) {
-            try {
-              const fullPath = `${vaultPath}/${entry.path}`;
-              const result = await readFile(fullPath);
-              if (result.exists) {
-                const note = parseNote(result.content, entry.path);
-                notesMap.set(note.id, note);
-              }
-            } catch (err) {
-              console.error(`Failed to load note: ${entry.path}`, err);
-            }
-          }
-        }
-      };
-
-      await loadNotesRecursively(tree);
-      setNotes(notesMap);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load vault');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [vaultPath, setNotes, setFileTree, setIsLoading, setError]);
-
-  /**
-   * Load a single note by its filepath
-   */
-  const loadNote = useCallback(async (filepath: string): Promise<Note | null> => {
-    if (!vaultPath) return null;
-
-    try {
-      const fullPath = `${vaultPath}/${filepath}`;
-      const result = await readFile(fullPath);
-
-      if (!result.exists) {
-        return null;
+  // Create a new note
+  const newNote = useCallback(
+    async (filename: string, title?: string) => {
+      if (!currentVault) {
+        throw new Error('No vault open');
       }
+      return createNote(currentVault.path, filename, title);
+    },
+    [currentVault, createNote]
+  );
 
-      const note = parseNote(result.content, filepath);
-      addNote(note);
-      return note;
-    } catch (err) {
-      console.error(`Failed to load note: ${filepath}`, err);
-      return null;
-    }
-  }, [vaultPath, addNote]);
+  // Close current note
+  const closeNote = useCallback(() => {
+    setCurrentNote(null);
+  }, [setCurrentNote]);
 
-  /**
-   * Create a new note
-   */
-  const createNote = useCallback(async (filename: string, folder: string = ''): Promise<Note | null> => {
-    if (!vaultPath) return null;
+  // Get all wikilink targets for autocomplete
+  const getWikilinkTargets = useCallback(() => {
+    return notesList.map((note) => ({
+      id: note.id,
+      title: note.title,
+      filepath: note.filepath,
+    }));
+  }, [notesList]);
 
-    const filepath = folder ? `${folder}/${filename}` : filename;
-    const fullPath = `${vaultPath}/${filepath}`;
+  // Find note by title (for wikilink resolution)
+  const findNoteByTitle = useCallback(
+    (title: string) => {
+      const normalizedTitle = title.toLowerCase();
 
-    try {
-      const note = createEmptyNote(filepath);
-      const content = serializeNote(note);
+      // First try exact match on title
+      const exactMatch = notesList.find(
+        (note) => note.title.toLowerCase() === normalizedTitle
+      );
+      if (exactMatch) return exactMatch;
 
-      await writeFile(fullPath, content);
-      addNote(note);
+      // Then try match on filename
+      const filenameMatch = notesList.find((note) => {
+        const filename = note.filepath.split('/').pop()?.replace('.md', '') || '';
+        return filename.toLowerCase() === normalizedTitle;
+      });
+      if (filenameMatch) return filenameMatch;
 
-      // Log event for sync
-      if (eventLogRef.current) {
-        await eventLogRef.current.logNoteCreated(note.id, filepath, content);
-      }
+      // Fuzzy match (contains)
+      const fuzzyMatch = notesList.find(
+        (note) =>
+          note.title.toLowerCase().includes(normalizedTitle) ||
+          note.filepath.toLowerCase().includes(normalizedTitle)
+      );
 
-      return note;
-    } catch (err) {
-      console.error(`Failed to create note: ${filepath}`, err);
-      return null;
-    }
-  }, [vaultPath, addNote]);
-
-  /**
-   * Save a note
-   */
-  const saveNote = useCallback(async (note: Note): Promise<boolean> => {
-    if (!vaultPath) return false;
-
-    const fullPath = `${vaultPath}/${note.filepath}`;
-
-    try {
-      // Get previous content hash for conflict detection
-      const existingNote = notes.get(note.id);
-      const previousHash = existingNote ? simpleHash(existingNote.rawContent) : '';
-
-      const content = serializeNote(note);
-      await writeFile(fullPath, content);
-      updateNote(note.id, { rawContent: content });
-
-      // Log event for sync
-      if (eventLogRef.current) {
-        await eventLogRef.current.logNoteUpdated(note.id, previousHash, content);
-      }
-
-      return true;
-    } catch (err) {
-      console.error(`Failed to save note: ${note.filepath}`, err);
-      return false;
-    }
-  }, [vaultPath, notes, updateNote]);
-
-  /**
-   * Delete a note
-   */
-  const deleteNote = useCallback(async (noteId: string): Promise<boolean> => {
-    if (!vaultPath) return false;
-
-    const note = notes.get(noteId);
-    if (!note) return false;
-
-    try {
-      const { deleteFile } = await import('../lib/tauri/commands');
-      const fullPath = `${vaultPath}/${note.filepath}`;
-      await deleteFile(fullPath);
-      removeNoteFromStore(noteId);
-
-      // Log event for sync
-      if (eventLogRef.current) {
-        await eventLogRef.current.logNoteDeleted(noteId, note.filepath);
-      }
-
-      return true;
-    } catch (err) {
-      console.error(`Failed to delete note: ${note.filepath}`, err);
-      return false;
-    }
-  }, [vaultPath, notes, removeNoteFromStore]);
-
-  /**
-   * Get a note by filepath
-   */
-  const getNoteByFilepath = useCallback((filepath: string): Note | undefined => {
-    for (const note of notes.values()) {
-      if (note.filepath === filepath) {
-        return note;
-      }
-    }
-    return undefined;
-  }, [notes]);
-
-  /**
-   * Rename a note (updates title in frontmatter only - filename stays unchanged)
-   */
-  const renameNote = useCallback(async (
-    noteId: string,
-    newTitle: string
-  ): Promise<boolean> => {
-    if (!vaultPath) return false;
-
-    const note = notes.get(noteId);
-    if (!note) return false;
-
-    try {
-      // Update the title in frontmatter
-      const updatedNote: Note = {
-        ...note,
-        frontmatter: {
-          ...note.frontmatter,
-          title: newTitle,
-          modified: new Date().toISOString(),
-        },
-      };
-
-      // Serialize and save the note
-      const content = serializeNote(updatedNote);
-      const fullPath = `${vaultPath}/${note.filepath}`;
-      await writeFile(fullPath, content);
-
-      // Update in store
-      updateNote(noteId, updatedNote);
-
-      return true;
-    } catch (err) {
-      console.error(`Failed to rename note: ${note.filepath}`, err);
-      return false;
-    }
-  }, [vaultPath, notes, updateNote]);
+      return fuzzyMatch;
+    },
+    [notesList]
+  );
 
   return {
-    loadVault,
-    loadNote,
-    createNote,
+    notes,
+    notesList,
+    currentNote,
+    loading,
+    saving,
+    error,
+    openNote,
+    newNote,
     saveNote,
     deleteNote,
     renameNote,
-    getNoteByFilepath,
+    closeNote,
+    updateContentWithAutoSave,
+    getWikilinkTargets,
+    findNoteByTitle,
+    clearError,
   };
 }
-
-export default useNotes;

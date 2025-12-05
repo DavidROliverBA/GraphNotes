@@ -1,311 +1,268 @@
-// src/components/Sidebar/FileTree.tsx
-
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect } from 'react';
+import {
+  ChevronRight,
+  ChevronDown,
+  FileText,
+  Folder,
+  FolderOpen,
+} from 'lucide-react';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useUIStore } from '../../stores/uiStore';
-import { useNoteStore } from '../../stores/noteStore';
-import { NoteFile } from '../../lib/notes/types';
-import { getFileTree } from '../../lib/tauri/commands';
-import { useNotes } from '../../hooks/useNotes';
-import { filterDotfiles, getDisplayTitle as getDisplayTitleUtil } from '../../lib/files/fileUtils';
+import { readDirectory } from '../../lib/tauri/commands';
 
-interface FileTreeItemProps {
-  item: NoteFile;
-  level: number;
-  onSelect: (path: string) => void;
-  selectedPath: string | null;
-  editingPath: string | null;
-  onStartEdit: (path: string, currentTitle: string) => void;
-  onSaveEdit: (path: string, newTitle: string) => void;
-  onCancelEdit: () => void;
-  editedTitle: string;
-  setEditedTitle: (title: string) => void;
-  getDisplayTitle: (path: string, fallbackName: string) => string;
+interface TreeNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  extension: string | null;
+  children?: TreeNode[];
+  isExpanded?: boolean;
 }
 
-const FileTreeItem: React.FC<FileTreeItemProps> = ({
-  item,
-  level,
-  onSelect,
-  selectedPath,
-  editingPath,
-  onStartEdit,
-  onSaveEdit,
-  onCancelEdit,
-  editedTitle,
-  setEditedTitle,
-  getDisplayTitle,
-}) => {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const isSelected = selectedPath === item.path;
-  const isEditing = editingPath === item.path;
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Get the display title (from frontmatter if loaded, otherwise filename without extension)
-  const displayTitle = item.isDirectory
-    ? item.name
-    : getDisplayTitle(item.path, item.name);
+export function FileTree() {
+  const { currentVault } = useSettingsStore();
+  const { selectedNoteId, setSelectedNoteId } = useUIStore();
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (currentVault) {
+      loadDirectory(currentVault.path);
     }
-  }, [isEditing]);
+  }, [currentVault]);
 
-  const handleClick = () => {
-    if (item.isDirectory) {
-      setIsExpanded(!isExpanded);
-    } else {
-      onSelect(item.path);
-    }
-  };
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!item.isDirectory) {
-      onStartEdit(item.path, displayTitle);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      onSaveEdit(item.path, editedTitle);
-    } else if (e.key === 'Escape') {
-      onCancelEdit();
-    }
-  };
-
-  return (
-    <div>
-      <div
-        className={`w-full flex items-center gap-2 px-2 py-1 text-sm text-left transition-colors ${
-          isSelected
-            ? 'bg-sidebar-active text-editor-text'
-            : 'text-gray-300 hover:bg-sidebar-hover hover:text-editor-text'
-        }`}
-        style={{ paddingLeft: `${level * 12 + 8}px` }}
-      >
-        <button
-          onClick={handleClick}
-          className="flex items-center gap-2 flex-1 min-w-0"
-        >
-          <span className="text-xs flex-shrink-0">
-            {item.isDirectory ? (isExpanded ? '📂' : '📁') : '📄'}
-          </span>
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editedTitle}
-              onChange={(e) => setEditedTitle(e.target.value)}
-              onBlur={() => onSaveEdit(item.path, editedTitle)}
-              onKeyDown={handleKeyDown}
-              onClick={(e) => e.stopPropagation()}
-              className="flex-1 min-w-0 bg-sidebar-hover text-editor-text text-sm rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-accent-primary"
-            />
-          ) : (
-            <span
-              className="truncate flex-1"
-              onDoubleClick={handleDoubleClick}
-              title={item.isDirectory ? item.name : 'Double-click to rename'}
-            >
-              {displayTitle}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {item.isDirectory && isExpanded && item.children && (
-        <div>
-          {item.children.map((child) => (
-            <FileTreeItem
-              key={child.path}
-              item={child}
-              level={level + 1}
-              onSelect={onSelect}
-              selectedPath={selectedPath}
-              editingPath={editingPath}
-              onStartEdit={onStartEdit}
-              onSaveEdit={onSaveEdit}
-              onCancelEdit={onCancelEdit}
-              editedTitle={editedTitle}
-              setEditedTitle={setEditedTitle}
-              getDisplayTitle={getDisplayTitle}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const FileTree: React.FC = () => {
-  const { vaultPath, setSelectedNoteId } = useUIStore();
-  const { notes, setFileTree, isLoading, setIsLoading, error, setError } = useNoteStore();
-  const { loadNote, getNoteByFilepath, renameNote } = useNotes();
-
-  // Local file tree state
-  const [localFileTree, setLocalFileTree] = useState<NoteFile[]>([]);
-  // Track selected file path separately from note ID
-  const [selectedFilepath, setSelectedFilepath] = useState<string | null>(null);
-  // Editing state
-  const [editingPath, setEditingPath] = useState<string | null>(null);
-  const [editedTitle, setEditedTitle] = useState('');
-
-  // Create a map of filepath -> title for quick lookup
-  const pathToTitleMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const note of notes.values()) {
-      map.set(note.filepath, note.frontmatter.title);
-    }
-    return map;
-  }, [notes]);
-
-  // Function to get display title for a filepath
-  const getDisplayTitle = (path: string, fallbackName: string): string => {
-    const title = pathToTitleMap.get(path);
-    return getDisplayTitleUtil(fallbackName, title);
-  };
-
-  // Filter out dotfiles from file tree
-  const filteredFileTree = useMemo(() => {
-    return filterDotfiles(localFileTree);
-  }, [localFileTree]);
-
-  const loadFileTree = async () => {
-    if (!vaultPath) return;
-
-    setIsLoading(true);
+  const loadDirectory = async (path: string) => {
+    setLoading(true);
     setError(null);
 
     try {
-      const tree = await getFileTree(vaultPath);
-      // Convert FileEntry to NoteFile format
-      const convertTree = (entries: any[]): NoteFile[] => {
-        return entries.map((entry) => ({
+      const entries = await readDirectory(path);
+      const nodes: TreeNode[] = entries
+        .filter((entry) => {
+          // Filter out hidden files and .graphnotes directory
+          if (entry.name.startsWith('.')) return false;
+          // Only show markdown files
+          if (entry.is_file && entry.extension !== 'md') return false;
+          return true;
+        })
+        .map((entry) => ({
           name: entry.name,
           path: entry.path,
           isDirectory: entry.is_directory,
-          children: entry.children ? convertTree(entry.children) : undefined,
+          isFile: entry.is_file,
+          extension: entry.extension,
         }));
-      };
-      setLocalFileTree(convertTree(tree));
-      setFileTree(convertTree(tree));
+
+      setTree(nodes);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load file tree');
+      setError(err instanceof Error ? err.message : 'Failed to load directory');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadFileTree();
-  }, [vaultPath]);
+  const toggleExpand = async (node: TreeNode) => {
+    const newExpanded = new Set(expandedPaths);
 
-  // Listen for refresh events
-  useEffect(() => {
-    const handleRefresh = () => {
-      loadFileTree();
-    };
+    if (newExpanded.has(node.path)) {
+      newExpanded.delete(node.path);
+    } else {
+      newExpanded.add(node.path);
 
-    window.addEventListener('refresh-file-tree', handleRefresh);
-    return () => {
-      window.removeEventListener('refresh-file-tree', handleRefresh);
-    };
-  }, [vaultPath]);
+      // Load children if not already loaded
+      if (!node.children) {
+        try {
+          const entries = await readDirectory(node.path);
+          const children: TreeNode[] = entries
+            .filter((entry) => {
+              if (entry.name.startsWith('.')) return false;
+              if (entry.is_file && entry.extension !== 'md') return false;
+              return true;
+            })
+            .map((entry) => ({
+              name: entry.name,
+              path: entry.path,
+              isDirectory: entry.is_directory,
+              isFile: entry.is_file,
+              extension: entry.extension,
+            }));
 
-  const handleSelect = async (filepath: string) => {
-    setSelectedFilepath(filepath);
-
-    // Check if note is already loaded
-    let note = getNoteByFilepath(filepath);
-
-    if (!note) {
-      // Load the note
-      const loadedNote = await loadNote(filepath);
-      if (loadedNote) {
-        note = loadedNote;
+          // Update tree with children
+          setTree((prevTree) => updateTreeNode(prevTree, node.path, { children }));
+        } catch (err) {
+          console.error('Failed to load directory:', err);
+        }
       }
     }
 
-    if (note) {
-      setSelectedNoteId(note.id);
+    setExpandedPaths(newExpanded);
+  };
+
+  const updateTreeNode = (
+    nodes: TreeNode[],
+    path: string,
+    updates: Partial<TreeNode>
+  ): TreeNode[] => {
+    return nodes.map((node) => {
+      if (node.path === path) {
+        return { ...node, ...updates };
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: updateTreeNode(node.children, path, updates),
+        };
+      }
+      return node;
+    });
+  };
+
+  const handleFileClick = (node: TreeNode) => {
+    if (node.isFile) {
+      setSelectedNoteId(node.path);
     }
   };
 
-  const handleStartEdit = (path: string, currentTitle: string) => {
-    setEditingPath(path);
-    setEditedTitle(currentTitle);
-  };
-
-  const handleSaveEdit = async (path: string, newTitle: string) => {
-    if (!newTitle.trim() || !editingPath) {
-      setEditingPath(null);
-      return;
-    }
-
-    // Get the note for this path
-    const note = getNoteByFilepath(path);
-    if (note) {
-      // Only update the title in frontmatter (don't rename file)
-      await renameNote(note.id, newTitle.trim());
-    }
-
-    setEditingPath(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingPath(null);
-  };
-
-  if (isLoading) {
+  if (loading && tree.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        <p className="text-sm">Loading files...</p>
+      <div className="flex items-center justify-center py-8">
+        <div className="text-sm text-text-tertiary">Loading...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 text-accent-error text-sm">
-        <p>Error: {error}</p>
+      <div className="p-2">
+        <div className="text-sm text-accent-danger">{error}</div>
       </div>
     );
   }
 
-  if (filteredFileTree.length === 0) {
+  if (tree.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500 p-4">
-        <div className="text-center">
-          <p className="text-sm">No markdown files found</p>
-          <p className="text-xs mt-2">Create a new note to get started</p>
-        </div>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <FileText className="w-8 h-8 text-text-tertiary mb-2" />
+        <p className="text-sm text-text-secondary">No notes yet</p>
+        <button className="mt-2 text-sm text-accent-primary hover:underline">
+          Create your first note
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="overflow-auto h-full py-2">
-      {filteredFileTree.map((item) => (
-        <FileTreeItem
-          key={item.path}
-          item={item}
-          level={0}
-          onSelect={handleSelect}
-          selectedPath={selectedFilepath}
-          editingPath={editingPath}
-          onStartEdit={handleStartEdit}
-          onSaveEdit={handleSaveEdit}
-          onCancelEdit={handleCancelEdit}
-          editedTitle={editedTitle}
-          setEditedTitle={setEditedTitle}
-          getDisplayTitle={getDisplayTitle}
+    <div className="select-none">
+      {tree.map((node) => (
+        <TreeNodeItem
+          key={node.path}
+          node={node}
+          depth={0}
+          isExpanded={expandedPaths.has(node.path)}
+          isSelected={selectedNoteId === node.path}
+          onToggle={toggleExpand}
+          onClick={handleFileClick}
+          expandedPaths={expandedPaths}
         />
       ))}
     </div>
   );
-};
+}
 
-export default FileTree;
+interface TreeNodeItemProps {
+  node: TreeNode;
+  depth: number;
+  isExpanded: boolean;
+  isSelected: boolean;
+  onToggle: (node: TreeNode) => void;
+  onClick: (node: TreeNode) => void;
+  expandedPaths: Set<string>;
+}
+
+function TreeNodeItem({
+  node,
+  depth,
+  isExpanded,
+  isSelected,
+  onToggle,
+  onClick,
+  expandedPaths,
+}: TreeNodeItemProps) {
+  const paddingLeft = 8 + depth * 16;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (node.isDirectory) {
+      onToggle(node);
+    } else {
+      onClick(node);
+    }
+  };
+
+  const getDisplayName = (name: string) => {
+    // Remove .md extension
+    if (name.endsWith('.md')) {
+      return name.slice(0, -3);
+    }
+    return name;
+  };
+
+  return (
+    <div>
+      <div
+        className={`
+          flex items-center gap-1 py-1 px-1 cursor-pointer rounded-sm
+          transition-colors duration-fast
+          ${isSelected ? 'bg-accent-primary/10 text-accent-primary' : 'hover:bg-bg-tertiary'}
+        `}
+        style={{ paddingLeft }}
+        onClick={handleClick}
+      >
+        {node.isDirectory && (
+          <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3 text-text-tertiary" />
+            ) : (
+              <ChevronRight className="w-3 h-3 text-text-tertiary" />
+            )}
+          </span>
+        )}
+        {!node.isDirectory && <span className="w-4" />}
+
+        <span className="flex-shrink-0">
+          {node.isDirectory ? (
+            isExpanded ? (
+              <FolderOpen className="w-4 h-4 text-accent-warning" />
+            ) : (
+              <Folder className="w-4 h-4 text-accent-warning" />
+            )
+          ) : (
+            <FileText className="w-4 h-4 text-text-tertiary" />
+          )}
+        </span>
+
+        <span className="truncate text-sm">{getDisplayName(node.name)}</span>
+      </div>
+
+      {node.isDirectory && isExpanded && node.children && (
+        <div>
+          {node.children.map((child) => (
+            <TreeNodeItem
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              isExpanded={expandedPaths.has(child.path)}
+              isSelected={isSelected}
+              onToggle={onToggle}
+              onClick={onClick}
+              expandedPaths={expandedPaths}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

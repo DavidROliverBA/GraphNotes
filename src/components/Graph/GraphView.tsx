@@ -1,247 +1,218 @@
-// src/components/Graph/GraphView.tsx
-
-import React, { useEffect, useState } from 'react';
-import { useRegisterEvents, useSigma, useSetSettings } from '@react-sigma/core';
-import '@react-sigma/core/lib/style.css';
-import { useUIStore } from '../../stores/uiStore';
+import { useCallback, useMemo, useEffect } from 'react';
 import {
-  colourPalette,
-} from './NodeStyles';
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Node,
+  Edge,
+  ConnectionMode,
+  Panel,
+  useReactFlow,
+  ReactFlowProvider,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 
-interface GraphViewProps {
-  focusNodeId?: string | null; // For local graph view
-}
+import { useGraph } from '../../hooks/useGraph';
+import { useUIStore } from '../../stores/uiStore';
+import { GraphNode, GraphEdge } from '../../lib/graph/types';
+import { NoteNode } from './NoteNode';
+import { RelationshipEdge } from './RelationshipEdge';
+import { GraphControls } from './GraphControls';
+import './graph.css';
 
-/**
- * GraphView component - handles events and visual effects within SigmaContainer
- */
-const GraphView: React.FC<GraphViewProps> = ({ focusNodeId }) => {
-  const sigma = useSigma();
-  const registerEvents = useRegisterEvents();
-  const setSettings = useSetSettings();
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const { selectedNoteId, setSelectedNoteId, setSelectedNodeId } = useUIStore();
-
-  // Register event handlers
-  useEffect(() => {
-    registerEvents({
-      enterNode: (event) => {
-        setHoveredNode(event.node);
-        // Change cursor to pointer
-        const container = sigma.getContainer();
-        if (container) {
-          container.style.cursor = 'pointer';
-        }
-      },
-      leaveNode: () => {
-        setHoveredNode(null);
-        // Reset cursor
-        const container = sigma.getContainer();
-        if (container) {
-          container.style.cursor = 'default';
-        }
-      },
-      clickNode: (event) => {
-        const nodeId = event.node;
-        setSelectedNoteId(nodeId);
-        setSelectedNodeId(nodeId);
-      },
-      doubleClickNode: (event) => {
-        // Double click could center the view on the node
-        const camera = sigma.getCamera();
-        const nodePosition = sigma.getNodeDisplayData(event.node);
-        if (nodePosition) {
-          camera.animate(
-            { x: nodePosition.x, y: nodePosition.y, ratio: 0.5 },
-            { duration: 300 }
-          );
-        }
-      },
-    });
-  }, [registerEvents, sigma, setSelectedNoteId, setSelectedNodeId]);
-
-  // Update visual settings based on hover/selection
-  useEffect(() => {
-    const graph = sigma.getGraph();
-
-    setSettings({
-      nodeReducer: (node, data) => {
-        const res = { ...data };
-
-        // Determine node state
-        const isSelected = node === selectedNoteId;
-        const isHovered = node === hoveredNode;
-        const isFocused = focusNodeId ? node === focusNodeId : false;
-
-        // Check if node is neighbor of hovered node
-        let isNeighbor = false;
-        if (hoveredNode && hoveredNode !== node) {
-          try {
-            isNeighbor =
-              graph.hasEdge(hoveredNode, node) || graph.hasEdge(node, hoveredNode);
-          } catch {
-            isNeighbor = false;
-          }
-        }
-
-        // Check if should be dimmed
-        const shouldDim = hoveredNode && !isHovered && !isNeighbor && !isSelected;
-
-        // Apply visual styles based on state
-        if (isSelected) {
-          res.color = colourPalette.selected;
-          res.highlighted = true;
-          res.zIndex = 3;
-        } else if (isHovered) {
-          res.color = colourPalette.hovered;
-          res.highlighted = true;
-          res.zIndex = 2;
-        } else if (isNeighbor) {
-          res.color = colourPalette.neighbor;
-          res.zIndex = 1;
-        } else if (shouldDim) {
-          res.color = colourPalette.dimmed;
-          res.zIndex = 0;
-        } else if (isFocused) {
-          res.color = colourPalette.selected;
-          res.zIndex = 3;
-        }
-
-        return res;
-      },
-      edgeReducer: (edge, data) => {
-        const res = { ...data };
-        const graph = sigma.getGraph();
-
-        // Get source and target
-        const source = graph.source(edge);
-        const target = graph.target(edge);
-
-        // Check if edge connects to hovered or selected node
-        const isConnectedToHovered =
-          hoveredNode && (source === hoveredNode || target === hoveredNode);
-        const isConnectedToSelected =
-          selectedNoteId && (source === selectedNoteId || target === selectedNoteId);
-
-        // Check if should be dimmed
-        const shouldDim = hoveredNode && !isConnectedToHovered && !isConnectedToSelected;
-
-        if (isConnectedToHovered || isConnectedToSelected) {
-          res.color = colourPalette.edgeHighlighted;
-          res.size = (res.size ?? 1) * 1.5;
-          res.zIndex = 1;
-        } else if (shouldDim) {
-          res.color = colourPalette.edgeDimmed;
-          res.zIndex = 0;
-        }
-
-        return res;
-      },
-    });
-  }, [sigma, setSettings, hoveredNode, selectedNoteId, focusNodeId]);
-
-  // Apply initial layout when component mounts
-  useEffect(() => {
-    applyForceLayout(sigma);
-    sigma.refresh();
-
-    // Fit view after layout
-    const camera = sigma.getCamera();
-    setTimeout(() => {
-      camera.animatedReset({ duration: 300 });
-    }, 100);
-  }, [sigma]);
-
-  return null;
+// Register custom node types
+const nodeTypes = {
+  noteNode: NoteNode,
 };
 
-/**
- * Simple force-directed layout
- */
-function applyForceLayout(sigma: ReturnType<typeof useSigma>): void {
-  const graph = sigma.getGraph();
-  const nodes = graph.nodes();
+// Register custom edge types
+const edgeTypes = {
+  relationshipEdge: RelationshipEdge,
+};
 
-  if (nodes.length === 0) return;
+// Convert graph nodes to React Flow nodes
+function toFlowNodes(graphNodes: GraphNode[], selectedId: string | null): Node[] {
+  return graphNodes.map((node, index) => {
+    // Simple grid layout if no position is set
+    const cols = Math.ceil(Math.sqrt(graphNodes.length));
+    const x = node.position?.x ?? (index % cols) * 250;
+    const y = node.position?.y ?? Math.floor(index / cols) * 150;
 
-  // Initialize random positions if not already set
-  nodes.forEach((node) => {
-    const attrs = graph.getNodeAttributes(node);
-    if (attrs.x === undefined || attrs.y === undefined) {
-      graph.setNodeAttribute(node, 'x', Math.random() * 100 - 50);
-      graph.setNodeAttribute(node, 'y', Math.random() * 100 - 50);
-    }
+    return {
+      id: node.id,
+      type: 'noteNode',
+      position: { x, y },
+      data: {
+        label: node.title,
+        filepath: node.filepath,
+        superTags: node.superTags,
+        incomingCount: node.incomingLinkCount,
+        outgoingCount: node.outgoingLinkCount,
+        isSelected: node.id === selectedId,
+      },
+    };
   });
+}
 
-  const iterations = 50;
-  const repulsionStrength = 100;
-  const attractionStrength = 0.01;
-  const centerGravity = 0.01;
+// Convert graph edges to React Flow edges
+function toFlowEdges(graphEdges: GraphEdge[]): Edge[] {
+  return graphEdges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: 'relationshipEdge',
+    data: {
+      label: edge.name,
+      appearance: edge.appearance,
+    },
+  }));
+}
 
-  for (let i = 0; i < iterations; i++) {
-    const forces: Record<string, { x: number; y: number }> = {};
+function GraphViewInner() {
+  const {
+    nodes: graphNodes,
+    edges: graphEdges,
+    selectedNodeId,
+    setSelectedNodeId,
+    setHoveredNodeId,
+    filter,
+    getFilteredNodes,
+    getFilteredEdges,
+  } = useGraph();
 
-    // Initialize forces
-    nodes.forEach((node) => {
-      forces[node] = { x: 0, y: 0 };
-    });
+  const { setSelectedNoteId } = useUIStore();
+  const { fitView } = useReactFlow();
 
-    // Calculate repulsion between all nodes
-    for (let j = 0; j < nodes.length; j++) {
-      for (let k = j + 1; k < nodes.length; k++) {
-        const nodeA = nodes[j];
-        const nodeB = nodes[k];
-        const posA = graph.getNodeAttributes(nodeA);
-        const posB = graph.getNodeAttributes(nodeB);
-
-        const dx = (posB.x ?? 0) - (posA.x ?? 0);
-        const dy = (posB.y ?? 0) - (posA.y ?? 0);
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-
-        const force = repulsionStrength / (distance * distance);
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
-
-        forces[nodeA].x -= fx;
-        forces[nodeA].y -= fy;
-        forces[nodeB].x += fx;
-        forces[nodeB].y += fy;
-      }
+  // Get filtered data if filter is active
+  const displayNodes = useMemo(() => {
+    if (Object.keys(filter).length > 0) {
+      return getFilteredNodes();
     }
+    return graphNodes;
+  }, [graphNodes, filter, getFilteredNodes]);
 
-    // Calculate attraction along edges
-    graph.forEachEdge((_, __, source, target) => {
-      const posA = graph.getNodeAttributes(source);
-      const posB = graph.getNodeAttributes(target);
+  const displayEdges = useMemo(() => {
+    if (Object.keys(filter).length > 0) {
+      return getFilteredEdges();
+    }
+    return graphEdges;
+  }, [graphEdges, filter, getFilteredEdges]);
 
-      const dx = (posB.x ?? 0) - (posA.x ?? 0);
-      const dy = (posB.y ?? 0) - (posA.y ?? 0);
-      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+  // Convert to React Flow format
+  const initialNodes = useMemo(
+    () => toFlowNodes(displayNodes, selectedNodeId),
+    [displayNodes, selectedNodeId]
+  );
 
-      const force = distance * attractionStrength;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
+  const initialEdges = useMemo(
+    () => toFlowEdges(displayEdges),
+    [displayEdges]
+  );
 
-      forces[source].x += fx;
-      forces[source].y += fy;
-      forces[target].x -= fx;
-      forces[target].y -= fy;
-    });
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-    // Apply center gravity
-    nodes.forEach((node) => {
-      const pos = graph.getNodeAttributes(node);
-      forces[node].x -= (pos.x ?? 0) * centerGravity;
-      forces[node].y -= (pos.y ?? 0) * centerGravity;
-    });
+  // Update nodes when graph data changes
+  useEffect(() => {
+    setNodes(toFlowNodes(displayNodes, selectedNodeId));
+  }, [displayNodes, selectedNodeId, setNodes]);
 
-    // Apply forces
-    nodes.forEach((node) => {
-      const pos = graph.getNodeAttributes(node);
-      graph.setNodeAttribute(node, 'x', (pos.x ?? 0) + forces[node].x);
-      graph.setNodeAttribute(node, 'y', (pos.y ?? 0) + forces[node].y);
-    });
-  }
+  // Update edges when graph data changes
+  useEffect(() => {
+    setEdges(toFlowEdges(displayEdges));
+  }, [displayEdges, setEdges]);
+
+  // Fit view when nodes change significantly
+  useEffect(() => {
+    if (nodes.length > 0) {
+      setTimeout(() => fitView({ padding: 0.2 }), 100);
+    }
+  }, [nodes.length, fitView]);
+
+  // Handle node click
+  const onNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setSelectedNodeId(node.id);
+    },
+    [setSelectedNodeId]
+  );
+
+  // Handle node double click - open the note
+  const onNodeDoubleClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      const filepath = node.data.filepath as string;
+      if (filepath) {
+        setSelectedNoteId(filepath);
+      }
+    },
+    [setSelectedNoteId]
+  );
+
+  // Handle node hover
+  const onNodeMouseEnter = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setHoveredNodeId(node.id);
+    },
+    [setHoveredNodeId]
+  );
+
+  const onNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null);
+  }, [setHoveredNodeId]);
+
+  // Handle background click - deselect
+  const onPaneClick = useCallback(() => {
+    setSelectedNodeId(null);
+  }, [setSelectedNodeId]);
+
+  return (
+    <div className="graph-container w-full h-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
+        onPaneClick={onPaneClick}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        connectionMode={ConnectionMode.Loose}
+        fitView
+        minZoom={0.1}
+        maxZoom={2}
+        defaultEdgeOptions={{
+          type: 'relationshipEdge',
+        }}
+      >
+        <Background color="var(--border-subtle)" gap={20} />
+        <Controls className="graph-controls" />
+        <MiniMap
+          nodeColor={(node) =>
+            node.data.isSelected ? 'var(--accent-primary)' : 'var(--bg-tertiary)'
+          }
+          maskColor="rgba(0, 0, 0, 0.2)"
+          className="graph-minimap"
+        />
+        <Panel position="top-right">
+          <GraphControls />
+        </Panel>
+      </ReactFlow>
+    </div>
+  );
+}
+
+export function GraphView() {
+  return (
+    <ReactFlowProvider>
+      <GraphViewInner />
+    </ReactFlowProvider>
+  );
 }
 
 export default GraphView;

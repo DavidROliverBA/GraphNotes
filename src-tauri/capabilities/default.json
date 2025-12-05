@@ -6,36 +6,25 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "dialog:default",
     "fs:default",
-    "shell:default",
-    {
-      "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-read-dir",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-create",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-remove",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-rename",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    },
-    {
-      "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }]
-    }
+    "fs:allow-read",
+    "fs:allow-write",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-read-dir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-copy-file",
+    "fs:scope-home",
+    "fs:scope-document",
+    "fs:scope-desktop",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "dialog:allow-confirm"
   ]
 }

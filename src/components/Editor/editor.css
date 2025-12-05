@@ -1,222 +1,276 @@
-/* src/components/Editor/editor.css */
-
-/* Tiptap editor styles */
-.ProseMirror {
-  @apply min-h-full outline-none;
+/* Editor container styles */
+.editor-container {
+  font-family: var(--font-sans);
 }
 
-.ProseMirror > * + * {
-  @apply mt-3;
+/* Yoopta Editor overrides */
+.yoopta-editor {
+  min-height: 500px;
 }
 
-/* Placeholder */
-.ProseMirror p.is-editor-empty:first-child::before {
-  @apply text-gray-500 float-left h-0 pointer-events-none;
-  content: attr(data-placeholder);
+.yoopta-editor [data-yoopta-editor] {
+  outline: none;
+}
+
+/* Block styles */
+.yoopta-editor [data-yoopta-block] {
+  margin-bottom: 0.5rem;
+}
+
+/* Paragraph */
+.yoopta-editor [data-yoopta-block-type="Paragraph"] {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--text-primary);
 }
 
 /* Headings */
-.ProseMirror h1 {
-  @apply text-3xl font-bold text-editor-text mt-6 mb-4;
+.yoopta-editor [data-yoopta-block-type="HeadingOne"] {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
 }
 
-.ProseMirror h2 {
-  @apply text-2xl font-bold text-editor-text mt-5 mb-3;
+.yoopta-editor [data-yoopta-block-type="HeadingTwo"] {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
 }
 
-.ProseMirror h3 {
-  @apply text-xl font-semibold text-editor-text mt-4 mb-2;
-}
-
-.ProseMirror h4 {
-  @apply text-lg font-semibold text-editor-text mt-3 mb-2;
-}
-
-.ProseMirror h5 {
-  @apply text-base font-semibold text-editor-text mt-2 mb-1;
-}
-
-.ProseMirror h6 {
-  @apply text-sm font-semibold text-gray-400 mt-2 mb-1;
-}
-
-/* Paragraphs */
-.ProseMirror p {
-  @apply text-editor-text leading-relaxed;
-}
-
-/* Links */
-.ProseMirror a {
-  @apply text-accent-primary underline hover:text-accent-secondary;
+.yoopta-editor [data-yoopta-block-type="HeadingThree"] {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
 }
 
 /* Lists */
-.ProseMirror ul {
-  @apply list-disc pl-6 my-2;
+.yoopta-editor [data-yoopta-block-type="BulletedList"],
+.yoopta-editor [data-yoopta-block-type="NumberedList"],
+.yoopta-editor [data-yoopta-block-type="TodoList"] {
+  padding-left: 1.5rem;
+  margin-bottom: 0.25rem;
 }
 
-.ProseMirror ol {
-  @apply list-decimal pl-6 my-2;
+.yoopta-editor [data-yoopta-block-type="BulletedList"]::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--text-tertiary);
 }
 
-.ProseMirror li {
-  @apply my-1;
-}
-
-.ProseMirror li > p {
-  @apply my-0;
-}
-
-/* Task lists */
-.ProseMirror ul[data-type="taskList"] {
-  @apply list-none pl-0;
-}
-
-.ProseMirror ul[data-type="taskList"] li {
-  @apply flex items-start gap-2;
-}
-
-.ProseMirror ul[data-type="taskList"] li > label {
-  @apply flex items-center;
-}
-
-.ProseMirror ul[data-type="taskList"] li > label > input[type="checkbox"] {
-  @apply w-4 h-4 rounded border-gray-500 bg-transparent cursor-pointer;
-  @apply checked:bg-accent-primary checked:border-accent-primary;
-}
-
-.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
-  @apply line-through text-gray-500;
+/* Todo list checkbox */
+.yoopta-editor [data-yoopta-block-type="TodoList"] input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
 }
 
 /* Blockquote */
-.ProseMirror blockquote {
-  @apply border-l-4 border-accent-primary pl-4 my-4 italic text-gray-400;
+.yoopta-editor [data-yoopta-block-type="Blockquote"] {
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 1rem;
+  margin-left: 0;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
-/* Code */
-.ProseMirror code {
-  @apply bg-sidebar-hover text-accent-secondary px-1.5 py-0.5 rounded font-mono text-sm;
+/* Callout */
+.yoopta-editor [data-yoopta-block-type="Callout"] {
+  background-color: var(--bg-tertiary);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.5rem 0;
 }
 
-.ProseMirror pre {
-  @apply bg-sidebar-bg rounded-lg p-4 my-4 overflow-x-auto;
+/* Code block */
+.yoopta-editor [data-yoopta-block-type="Code"] {
+  background-color: var(--bg-tertiary);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-x: auto;
 }
 
-.ProseMirror pre code {
-  @apply bg-transparent p-0 text-editor-text;
+.yoopta-editor [data-yoopta-block-type="Code"] code {
+  color: var(--text-primary);
 }
 
-/* Syntax highlighting */
-.ProseMirror pre .hljs-comment,
-.ProseMirror pre .hljs-quote {
-  @apply text-gray-500 italic;
+/* Inline marks */
+.yoopta-editor strong {
+  font-weight: 600;
 }
 
-.ProseMirror pre .hljs-keyword,
-.ProseMirror pre .hljs-selector-tag,
-.ProseMirror pre .hljs-addition {
-  @apply text-accent-secondary;
+.yoopta-editor em {
+  font-style: italic;
 }
 
-.ProseMirror pre .hljs-number,
-.ProseMirror pre .hljs-string,
-.ProseMirror pre .hljs-meta .hljs-meta-string,
-.ProseMirror pre .hljs-literal,
-.ProseMirror pre .hljs-doctag,
-.ProseMirror pre .hljs-regexp {
-  @apply text-accent-success;
+.yoopta-editor u {
+  text-decoration: underline;
 }
 
-.ProseMirror pre .hljs-title,
-.ProseMirror pre .hljs-section,
-.ProseMirror pre .hljs-name,
-.ProseMirror pre .hljs-selector-id,
-.ProseMirror pre .hljs-selector-class {
-  @apply text-accent-primary;
+.yoopta-editor s {
+  text-decoration: line-through;
 }
 
-.ProseMirror pre .hljs-attribute,
-.ProseMirror pre .hljs-attr,
-.ProseMirror pre .hljs-variable,
-.ProseMirror pre .hljs-template-variable,
-.ProseMirror pre .hljs-class .hljs-title,
-.ProseMirror pre .hljs-type {
-  @apply text-accent-warning;
+.yoopta-editor code {
+  background-color: var(--bg-tertiary);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.875em;
 }
 
-.ProseMirror pre .hljs-symbol,
-.ProseMirror pre .hljs-bullet,
-.ProseMirror pre .hljs-subst,
-.ProseMirror pre .hljs-meta,
-.ProseMirror pre .hljs-meta .hljs-keyword,
-.ProseMirror pre .hljs-selector-attr,
-.ProseMirror pre .hljs-selector-pseudo,
-.ProseMirror pre .hljs-link {
-  @apply text-accent-error;
+.yoopta-editor mark {
+  background-color: rgba(251, 191, 36, 0.3);
+  padding: 0.125rem 0;
 }
 
-.ProseMirror pre .hljs-built_in,
-.ProseMirror pre .hljs-deletion {
-  @apply text-accent-error;
+/* Links */
+.yoopta-editor a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease;
 }
 
-/* Horizontal rule */
-.ProseMirror hr {
-  @apply border-t border-sidebar-hover my-6;
-}
-
-/* Images */
-.ProseMirror img {
-  @apply max-w-full h-auto rounded-lg my-4;
-}
-
-/* Tables */
-.ProseMirror table {
-  @apply border-collapse w-full my-4;
-}
-
-.ProseMirror th,
-.ProseMirror td {
-  @apply border border-sidebar-hover px-3 py-2 text-left;
-}
-
-.ProseMirror th {
-  @apply bg-sidebar-hover font-semibold;
+.yoopta-editor a:hover {
+  border-bottom-color: var(--accent-primary);
 }
 
 /* Wikilink styles */
-.wikilink,
-.wikilink-detected {
-  @apply text-accent-primary cursor-pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
+.wikilink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background-color: var(--bg-tertiary);
+  border-radius: 0.375rem;
+  color: var(--accent-primary);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.wikilink:hover,
-.wikilink-detected:hover {
-  @apply text-accent-secondary bg-sidebar-hover rounded;
+.wikilink:hover {
+  background-color: var(--accent-primary);
+  color: white;
+}
+
+.wikilink-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  opacity: 0.7;
+}
+
+/* Placeholder */
+.yoopta-editor [data-placeholder]::before {
+  content: attr(data-placeholder);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  position: absolute;
 }
 
 /* Selection */
-.ProseMirror ::selection {
-  @apply bg-accent-primary/30;
+.yoopta-editor ::selection {
+  background-color: rgba(99, 102, 241, 0.2);
 }
 
-/* Focus ring for editor */
-.ProseMirror-focused {
-  @apply outline-none;
+/* Toolbar */
+.yoopta-toolbar {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 0.25rem;
 }
 
-/* Tippy.js theme for wikilink autocomplete */
-.tippy-box[data-theme~='graphnotes'] {
-  @apply bg-transparent;
+.yoopta-toolbar button {
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
 }
 
-.tippy-box[data-theme~='graphnotes'] .tippy-content {
-  @apply p-0;
+.yoopta-toolbar button:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
-.tippy-box[data-theme~='graphnotes'] .tippy-arrow {
-  display: none;
+.yoopta-toolbar button[data-active="true"] {
+  background-color: var(--accent-primary);
+  color: white;
+}
+
+/* Action menu */
+.yoopta-action-menu {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  padding: 0.5rem;
+  min-width: 200px;
+}
+
+.yoopta-action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.yoopta-action-menu-item:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.yoopta-action-menu-item-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--text-tertiary);
+}
+
+.yoopta-action-menu-item-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.yoopta-action-menu-item-description {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+/* Dark mode adjustments */
+.dark .yoopta-editor [data-yoopta-block-type="Code"] {
+  background-color: var(--bg-tertiary);
+}
+
+.dark .yoopta-editor code {
+  background-color: var(--bg-tertiary);
+}
+
+/* Focus mode */
+.focus-mode .editor-container {
+  padding: 2rem;
+}
+
+.focus-mode .yoopta-editor {
+  max-width: 700px;
+  margin: 0 auto;
 }

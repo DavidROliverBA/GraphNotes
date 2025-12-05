@@ -1,338 +1,225 @@
-// src/hooks/useGraph.ts
-
-import { useCallback, useMemo } from 'react';
-import { useNoteStore } from '../stores/noteStore';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useGraphStore } from '../stores/graphStore';
-import { getGraphManager, resetGraphManager } from '../lib/graph/GraphManager';
-import { GraphNode, GraphEdge } from '../lib/graph/types';
-import {
-  parseAllLinks,
-  generateEdgeId,
-  buildNoteIndex,
-  parseNoteLinks,
-} from '../lib/graph/linkParser';
-import { Note, LinkDefinition } from '../lib/notes/types';
+import { useNoteStore } from '../stores/noteStore';
+import { GraphEdge, EdgeAppearance, RelationshipPreset } from '../lib/graph/types';
+import { v4 as uuidv4 } from 'uuid';
 
 export function useGraph() {
-  const { notes } = useNoteStore();
   const {
     nodes,
     edges,
-    setNodes,
-    setEdges,
-    addNode,
-    updateNode,
-    removeNode,
-    addEdge,
-    updateEdge,
+    stats,
+    selectedNodeId,
+    hoveredNodeId,
+    focusedNodeId,
+    filter,
+    layoutType,
+    relationshipPresets,
+    buildGraph,
+    updateNote,
+    removeNote,
+    setSelectedNodeId,
+    setHoveredNodeId,
+    setFocusedNodeId,
+    setFilter,
+    clearFilter,
+    setLayoutType,
+    updateEdgeAppearance,
     removeEdge,
+    addRelationshipPreset,
+    removeRelationshipPreset,
+    getIncomingLinks,
+    getOutgoingLinks,
+    getNeighbors,
+    getSubgraph,
   } = useGraphStore();
 
-  const graphManager = useMemo(() => getGraphManager(), []);
+  const { notes } = useNoteStore();
 
-  /**
-   * Build the complete graph from all notes
-   */
-  const buildGraph = useCallback(() => {
-    // Clear existing graph
-    graphManager.clear();
+  // Convert notes Map to array for graph building
+  const notesArray = useMemo(() => Array.from(notes.values()), [notes]);
 
-    // Add all notes as nodes
-    for (const note of notes.values()) {
-      const node: GraphNode = {
-        id: note.id,
-        label: note.frontmatter.title,
-        filepath: note.filepath,
-        size: 1,
-      };
-      graphManager.addNode(node);
+  // Build graph when notes change
+  useEffect(() => {
+    if (notesArray.length > 0) {
+      buildGraph(notesArray);
+    }
+  }, [notesArray, buildGraph]);
+
+  // Get the selected node
+  const selectedNode = selectedNodeId
+    ? nodes.find((n) => n.id === selectedNodeId)
+    : null;
+
+  // Get the focused node
+  const focusedNode = focusedNodeId
+    ? nodes.find((n) => n.id === focusedNodeId)
+    : null;
+
+  // Get filtered nodes based on current filter
+  const getFilteredNodes = useCallback(() => {
+    let filteredNodes = [...nodes];
+
+    if (filter.includeTags?.length) {
+      filteredNodes = filteredNodes.filter((n) =>
+        n.superTags?.some((t) => filter.includeTags!.includes(t))
+      );
     }
 
-    // Parse all links and add as edges
-    const { allResolved, allUnresolved } = parseAllLinks(notes);
+    if (filter.excludeTags?.length) {
+      filteredNodes = filteredNodes.filter(
+        (n) => !n.superTags?.some((t) => filter.excludeTags!.includes(t))
+      );
+    }
 
-    for (const link of allResolved) {
+    if (filter.searchQuery) {
+      const query = filter.searchQuery.toLowerCase();
+      filteredNodes = filteredNodes.filter((n) =>
+        n.title.toLowerCase().includes(query)
+      );
+    }
+
+    return filteredNodes;
+  }, [nodes, filter]);
+
+  // Get edges for filtered nodes
+  const getFilteredEdges = useCallback(() => {
+    const filteredNodes = getFilteredNodes();
+    const nodeIds = new Set(filteredNodes.map((n) => n.id));
+
+    return edges.filter(
+      (e) => nodeIds.has(e.source) && nodeIds.has(e.target)
+    );
+  }, [edges, getFilteredNodes]);
+
+  // Create a new link between notes
+  const createLink = useCallback(
+    (
+      sourceId: string,
+      targetId: string,
+      name: string,
+      appearance?: Partial<EdgeAppearance>
+    ): GraphEdge => {
+      const defaultAppearance: EdgeAppearance = {
+        direction: 'forward',
+        colour: '#6366f1',
+        style: 'solid',
+        thickness: 'normal',
+        animated: false,
+      };
+
       const edge: GraphEdge = {
-        id: generateEdgeId(link.sourceId, link.targetId, link.name),
-        source: link.sourceId,
-        target: link.targetId,
-        name: link.name,
-        description: link.description,
-      };
-      graphManager.addEdge(edge);
-    }
-
-    // Update node sizes based on connections
-    graphManager.updateNodeSizes();
-
-    // Sync to store
-    const { nodes: graphNodes, edges: graphEdges } = graphManager.exportToMaps();
-    setNodes(graphNodes);
-    setEdges(graphEdges);
-
-    // Log unresolved links for debugging
-    if (allUnresolved.length > 0) {
-      console.warn('Unresolved links:', allUnresolved);
-    }
-
-    return { resolved: allResolved, unresolved: allUnresolved };
-  }, [notes, graphManager, setNodes, setEdges]);
-
-  /**
-   * Update the graph when a single note changes
-   */
-  const updateGraphForNote = useCallback((note: Note) => {
-    // Update or add the node
-    const node: GraphNode = {
-      id: note.id,
-      label: note.frontmatter.title,
-      filepath: note.filepath,
-    };
-
-    if (graphManager.hasNode(note.id)) {
-      graphManager.updateNode(note.id, node);
-      updateNode(note.id, node);
-    } else {
-      graphManager.addNode(node);
-      addNode(node);
-    }
-
-    // Remove existing outbound edges from this note
-    const existingOutbound = graphManager.getOutboundEdges(note.id);
-    for (const edge of existingOutbound) {
-      graphManager.removeEdge(edge.id);
-      removeEdge(edge.id);
-    }
-
-    // Re-parse links for this note and add new edges
-    const noteIndex = buildNoteIndex(notes);
-    const { resolved } = parseNoteLinks(note, noteIndex);
-
-    for (const link of resolved) {
-      const edge: GraphEdge = {
-        id: generateEdgeId(link.sourceId, link.targetId, link.name),
-        source: link.sourceId,
-        target: link.targetId,
-        name: link.name,
-        description: link.description,
-      };
-      graphManager.addEdge(edge);
-      addEdge(edge);
-    }
-
-    // Update node sizes
-    graphManager.updateNodeSizes();
-    const { nodes: graphNodes } = graphManager.exportToMaps();
-    setNodes(graphNodes);
-  }, [notes, graphManager, addNode, updateNode, addEdge, removeEdge, setNodes]);
-
-  /**
-   * Remove a note from the graph
-   */
-  const removeNoteFromGraph = useCallback((noteId: string) => {
-    // Remove the node (this also removes connected edges in Graphology)
-    const connectedEdges = graphManager.getConnectedEdges(noteId);
-
-    for (const edge of connectedEdges) {
-      removeEdge(edge.id);
-    }
-
-    graphManager.removeNode(noteId);
-    removeNode(noteId);
-
-    // Update node sizes
-    graphManager.updateNodeSizes();
-    const { nodes: graphNodes } = graphManager.exportToMaps();
-    setNodes(graphNodes);
-  }, [graphManager, removeNode, removeEdge, setNodes]);
-
-  /**
-   * Get links for a specific note (both outlinks and backlinks)
-   */
-  const getLinksForNote = useCallback((noteId: string): {
-    outlinks: GraphEdge[];
-    backlinks: GraphEdge[];
-  } => {
-    return {
-      outlinks: graphManager.getOutboundEdges(noteId),
-      backlinks: graphManager.getInboundEdges(noteId),
-    };
-  }, [graphManager]);
-
-  /**
-   * Get connected notes for a specific note
-   */
-  const getConnectedNotesForNote = useCallback((noteId: string): {
-    linkedNotes: GraphNode[];
-    backlinkNotes: GraphNode[];
-  } => {
-    return {
-      linkedNotes: graphManager.getLinkedNodes(noteId),
-      backlinkNotes: graphManager.getBacklinkNodes(noteId),
-    };
-  }, [graphManager]);
-
-  /**
-   * Add a new link between two notes
-   */
-  const addLink = useCallback((
-    sourceId: string,
-    targetId: string,
-    name: string,
-    description?: string
-  ): GraphEdge | null => {
-    if (!graphManager.hasNode(sourceId) || !graphManager.hasNode(targetId)) {
-      console.warn('Cannot add link: source or target node does not exist');
-      return null;
-    }
-
-    const edge: GraphEdge = {
-      id: generateEdgeId(sourceId, targetId, name),
-      source: sourceId,
-      target: targetId,
-      name,
-      description,
-    };
-
-    graphManager.addEdge(edge);
-    addEdge(edge);
-
-    return edge;
-  }, [graphManager, addEdge]);
-
-  /**
-   * Update an existing link
-   */
-  const updateLink = useCallback((
-    edgeId: string,
-    updates: { name?: string; description?: string }
-  ): boolean => {
-    if (!graphManager.hasEdge(edgeId)) {
-      return false;
-    }
-
-    const existingEdge = graphManager.getEdge(edgeId);
-    if (!existingEdge) return false;
-
-    // If name changed, we need to create a new edge with new ID
-    if (updates.name && updates.name !== existingEdge.name) {
-      const newEdge: GraphEdge = {
-        ...existingEdge,
-        id: generateEdgeId(existingEdge.source, existingEdge.target, updates.name),
-        name: updates.name,
-        description: updates.description ?? existingEdge.description,
-      };
-
-      // Remove old edge
-      graphManager.removeEdge(edgeId);
-      removeEdge(edgeId);
-
-      // Add new edge
-      graphManager.addEdge(newEdge);
-      addEdge(newEdge);
-
-      return true;
-    }
-
-    // Just update description
-    graphManager.updateEdge(edgeId, { description: updates.description });
-    updateEdge(edgeId, { description: updates.description });
-
-    return true;
-  }, [graphManager, addEdge, removeEdge, updateEdge]);
-
-  /**
-   * Remove a link
-   */
-  const removeLink = useCallback((edgeId: string): boolean => {
-    if (!graphManager.hasEdge(edgeId)) {
-      return false;
-    }
-
-    graphManager.removeEdge(edgeId);
-    removeEdge(edgeId);
-
-    return true;
-  }, [graphManager, removeEdge]);
-
-  /**
-   * Get orphan nodes (notes with no connections)
-   */
-  const getOrphanNotes = useCallback((): GraphNode[] => {
-    return graphManager.getOrphanNodes();
-  }, [graphManager]);
-
-  /**
-   * Get graph statistics
-   */
-  const getGraphStats = useCallback(() => {
-    return {
-      nodeCount: graphManager.getNodeCount(),
-      edgeCount: graphManager.getEdgeCount(),
-      orphanCount: graphManager.getOrphanNodes().length,
-    };
-  }, [graphManager]);
-
-  /**
-   * Get the Graphology instance for use with Sigma.js
-   */
-  const getGraphologyInstance = useCallback(() => {
-    return graphManager.getGraphologyInstance();
-  }, [graphManager]);
-
-  /**
-   * Reset the graph
-   */
-  const resetGraph = useCallback(() => {
-    resetGraphManager();
-    setNodes(new Map());
-    setEdges(new Map());
-  }, [setNodes, setEdges]);
-
-  /**
-   * Convert frontmatter links to LinkDefinitions for saving
-   */
-  const getLinksForFrontmatter = useCallback((noteId: string): LinkDefinition[] => {
-    const outlinks = graphManager.getOutboundEdges(noteId);
-
-    // Only include links that should be in frontmatter
-    // (named relationships, not just 'relates to' from inline wikilinks)
-    return outlinks
-      .filter((edge) => edge.name !== 'relates to' || edge.description)
-      .map((edge) => ({
-        target: edge.target,
-        name: edge.name,
-        description: edge.description,
+        id: uuidv4(),
+        source: sourceId,
+        target: targetId,
+        name,
         created: new Date().toISOString(),
+        appearance: { ...defaultAppearance, ...appearance },
+      };
+
+      // Note: This doesn't persist to the file yet
+      // That would require updating the note's frontmatter
+      return edge;
+    },
+    []
+  );
+
+  // Apply a relationship preset
+  const applyPreset = useCallback(
+    (edgeId: string, presetId: string) => {
+      const preset = relationshipPresets.find((p) => p.id === presetId);
+      if (preset) {
+        updateEdgeAppearance(edgeId, preset.appearance);
+      }
+    },
+    [relationshipPresets, updateEdgeAppearance]
+  );
+
+  // Create a custom relationship preset
+  const createPreset = useCallback(
+    (name: string, appearance: EdgeAppearance, description?: string) => {
+      const preset: RelationshipPreset = {
+        id: uuidv4(),
+        name,
+        description,
+        appearance,
+      };
+      addRelationshipPreset(preset);
+      return preset;
+    },
+    [addRelationshipPreset]
+  );
+
+  // Get backlinks for a note
+  const getBacklinks = useCallback(
+    (noteId: string) => {
+      const incomingEdges = getIncomingLinks(noteId);
+      return incomingEdges.map((edge) => ({
+        edge,
+        sourceNode: nodes.find((n) => n.id === edge.source),
       }));
-  }, [graphManager]);
+    },
+    [nodes, getIncomingLinks]
+  );
+
+  // Get outlinks for a note
+  const getOutlinks = useCallback(
+    (noteId: string) => {
+      const outgoingEdges = getOutgoingLinks(noteId);
+      return outgoingEdges.map((edge) => ({
+        edge,
+        targetNode: nodes.find((n) => n.id === edge.target),
+      }));
+    },
+    [nodes, getOutgoingLinks]
+  );
 
   return {
-    // Graph data
+    // Data
     nodes,
     edges,
+    stats,
+    selectedNode,
+    focusedNode,
+    relationshipPresets,
+    layoutType,
+    filter,
 
-    // Build operations
-    buildGraph,
-    updateGraphForNote,
-    removeNoteFromGraph,
-    resetGraph,
+    // Filtered data
+    getFilteredNodes,
+    getFilteredEdges,
 
-    // Query operations
-    getLinksForNote,
-    getConnectedNotesForNote,
-    getOrphanNotes,
-    getGraphStats,
+    // Selection
+    selectedNodeId,
+    hoveredNodeId,
+    focusedNodeId,
+    setSelectedNodeId,
+    setHoveredNodeId,
+    setFocusedNodeId,
+
+    // Graph operations
+    updateNote,
+    removeNote,
 
     // Link operations
-    addLink,
-    updateLink,
-    removeLink,
-    getLinksForFrontmatter,
+    createLink,
+    updateEdgeAppearance,
+    removeEdge,
+    getBacklinks,
+    getOutlinks,
+    getNeighbors,
+    getSubgraph,
 
-    // Advanced
-    getGraphologyInstance,
+    // Filter operations
+    setFilter,
+    clearFilter,
+
+    // Layout
+    setLayoutType,
+
+    // Preset operations
+    applyPreset,
+    createPreset,
+    removeRelationshipPreset,
   };
 }
-
-export default useGraph;
