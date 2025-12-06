@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   MoreHorizontal,
   Link,
@@ -6,7 +6,13 @@ import {
   Clock,
   CheckCircle,
   Loader2,
+  Trash2,
+  Edit3,
+  Copy,
+  Search,
 } from 'lucide-react';
+import { useUIStore } from '../../stores/uiStore';
+import { useNoteStore } from '../../stores/noteStore';
 
 interface EditorToolbarProps {
   title: string;
@@ -15,7 +21,32 @@ interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ title, saving, modified }: EditorToolbarProps) {
-  const [showProperties, setShowProperties] = useState(false);
+  const {
+    showPropertiesPanel,
+    setShowPropertiesPanel,
+    showBacklinksPanel,
+    setShowBacklinksPanel,
+    setShowDeleteConfirmation,
+    setShowFindInNote,
+    setRenamingNoteId,
+  } = useUIStore();
+  const { currentNote, duplicateNote } = useNoteStore();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDropdown]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -83,11 +114,11 @@ export function EditorToolbar({ title, saving, modified }: EditorToolbarProps) {
 
         {/* Properties toggle */}
         <button
-          onClick={() => setShowProperties(!showProperties)}
+          onClick={() => setShowPropertiesPanel(!showPropertiesPanel)}
           className={`
             flex items-center gap-1.5 px-2 py-1 rounded text-xs
             transition-colors duration-fast
-            ${showProperties
+            ${showPropertiesPanel
               ? 'bg-accent-primary/10 text-accent-primary'
               : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
             }
@@ -99,18 +130,94 @@ export function EditorToolbar({ title, saving, modified }: EditorToolbarProps) {
 
         {/* Backlinks */}
         <button
-          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors duration-fast"
+          onClick={() => setShowBacklinksPanel(!showBacklinksPanel)}
+          className={`
+            flex items-center gap-1.5 px-2 py-1 rounded text-xs
+            transition-colors duration-fast
+            ${showBacklinksPanel
+              ? 'bg-accent-primary/10 text-accent-primary'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+            }
+          `}
         >
           <Link className="w-3 h-3" />
           <span>Links</span>
         </button>
 
         {/* More options */}
-        <button
-          className="p-1 rounded text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors duration-fast"
-        >
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            className={`
+              p-1 rounded transition-colors duration-fast
+              ${showDropdown
+                ? 'bg-bg-tertiary text-text-primary'
+                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+              }
+            `}
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+
+          {showDropdown && (
+            <div className="absolute right-0 top-full mt-1 w-48 py-1 bg-bg-primary border border-border-default rounded-lg shadow-xl z-50">
+              <button
+                onClick={() => {
+                  setShowFindInNote(true);
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-bg-tertiary"
+              >
+                <Search className="w-4 h-4" />
+                <span>Find in Note</span>
+                <span className="ml-auto text-xs text-text-tertiary">⌘F</span>
+              </button>
+
+              <div className="my-1 border-t border-border-subtle" />
+
+              <button
+                onClick={() => {
+                  if (currentNote) {
+                    setRenamingNoteId(currentNote.id);
+                  }
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-bg-tertiary"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Rename</span>
+                <span className="ml-auto text-xs text-text-tertiary">F2</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (currentNote) {
+                    await duplicateNote(currentNote.filepath);
+                  }
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-primary hover:bg-bg-tertiary"
+              >
+                <Copy className="w-4 h-4" />
+                <span>Duplicate</span>
+              </button>
+
+              <div className="my-1 border-t border-border-subtle" />
+
+              <button
+                onClick={() => {
+                  setShowDeleteConfirmation(true);
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-accent-error hover:bg-accent-error/10"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete</span>
+                <span className="ml-auto text-xs">⌘⌫</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

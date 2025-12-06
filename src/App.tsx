@@ -11,6 +11,11 @@ import { GraphPanel } from './components/Layout/GraphPanel';
 import { QuickSearch } from './components/Search';
 import { SettingsPanel } from './components/Settings';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { DeleteConfirmDialog } from './components/dialogs/DeleteConfirmDialog';
+import { ContextMenu } from './components/common/ContextMenu';
+import { FindInNote } from './components/Editor/FindInNote';
+import { BacklinksPanel } from './components/LinkPanel/BacklinksPanel';
+import { PropertiesPanel } from './components/Editor/PropertiesPanel';
 
 function App() {
   const { currentVault } = useSettingsStore();
@@ -78,6 +83,11 @@ function App() {
       <MainLayout>{renderContent()}</MainLayout>
       <QuickSearch />
       <SettingsPanel />
+      <DeleteConfirmDialog />
+      <ContextMenu />
+      <FindInNote />
+      <BacklinksPanel />
+      <PropertiesPanel />
     </>
   );
 }

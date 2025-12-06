@@ -10,13 +10,15 @@ import {
   Moon,
   Sun,
   Check,
+  Hash,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { KeyboardShortcutsPanel } from './KeyboardShortcutsPanel';
 import { SyncStatusPanel } from '../Sync/SyncStatusPanel';
+import { SuperTagManager } from '../SuperTags/SuperTagManager';
 
-type SettingsTab = 'general' | 'appearance' | 'keyboard' | 'sync' | 'data';
+type SettingsTab = 'general' | 'appearance' | 'keyboard' | 'supertags' | 'sync' | 'data';
 
 interface SettingsPanelProps {
   className?: string;
@@ -48,6 +50,7 @@ export function SettingsPanel({ className = '' }: SettingsPanelProps) {
     { id: 'general', label: 'General', icon: <Settings className="w-4 h-4" /> },
     { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
     { id: 'keyboard', label: 'Keyboard', icon: <Keyboard className="w-4 h-4" /> },
+    { id: 'supertags', label: 'Super Tags', icon: <Hash className="w-4 h-4" /> },
     { id: 'sync', label: 'Sync', icon: <Share2 className="w-4 h-4" /> },
     { id: 'data', label: 'Data', icon: <Database className="w-4 h-4" /> },
   ];
@@ -106,6 +109,7 @@ export function SettingsPanel({ className = '' }: SettingsPanelProps) {
             {activeTab === 'general' && <GeneralSettings />}
             {activeTab === 'appearance' && <AppearanceSettings />}
             {activeTab === 'keyboard' && <KeyboardShortcutsPanel />}
+            {activeTab === 'supertags' && <SuperTagManager />}
             {activeTab === 'sync' && <SyncSettings />}
             {activeTab === 'data' && <DataSettings />}
           </div>

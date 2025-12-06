@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUIStore } from '../../stores/uiStore';
+import { useNoteStore } from '../../stores/noteStore';
 import { readDirectory } from '../../lib/tauri/commands';
 
 interface TreeNode {
@@ -32,16 +33,69 @@ const OVERSCAN = 10; // Number of items to render outside visible area
 
 export function FileTree() {
   const { currentVault } = useSettingsStore();
-  const { selectedNoteId, setSelectedNoteId } = useUIStore();
+  const { selectedNoteId, setSelectedNoteId, openContextMenu, renamingNoteId, setRenamingNoteId } = useUIStore();
+  const { notesList, renameNote } = useNoteStore();
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   // Virtual scrolling state
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+
+  // Track if a note is being renamed by ID
+  useEffect(() => {
+    if (renamingNoteId) {
+      const note = notesList.find(n => n.id === renamingNoteId);
+      if (note) {
+        setEditingPath(note.filepath);
+        const filename = note.filepath.split('/').pop()?.replace('.md', '') || '';
+        setEditingName(filename);
+      }
+    } else {
+      setEditingPath(null);
+      setEditingName('');
+    }
+  }, [renamingNoteId, notesList]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openContextMenu(e.clientX, e.clientY, node.path, node.isDirectory ? 'folder' : 'file');
+  }, [openContextMenu]);
+
+  const handleRenameSubmit = useCallback(async (path: string) => {
+    if (!editingName.trim()) {
+      setEditingPath(null);
+      setRenamingNoteId(null);
+      return;
+    }
+
+    const dir = path.substring(0, path.lastIndexOf('/'));
+    const newPath = `${dir}/${editingName.trim()}.md`;
+
+    if (newPath !== path) {
+      await renameNote(path, newPath);
+    }
+
+    setEditingPath(null);
+    setRenamingNoteId(null);
+  }, [editingName, renameNote, setRenamingNoteId]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, path: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleRenameSubmit(path);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingPath(null);
+      setRenamingNoteId(null);
+    }
+  }, [handleRenameSubmit, setRenamingNoteId]);
 
   useEffect(() => {
     if (currentVault) {
@@ -253,10 +307,17 @@ export function FileTree() {
             depth={0}
             isExpanded={expandedPaths.has(node.path)}
             isSelected={selectedNoteId === node.path}
+            isEditing={editingPath === node.path}
+            editingName={editingName}
             onToggle={toggleExpand}
             onClick={handleFileClick}
+            onContextMenu={handleContextMenu}
+            onEditingNameChange={setEditingName}
+            onRenameSubmit={handleRenameSubmit}
+            onRenameKeyDown={handleRenameKeyDown}
             expandedPaths={expandedPaths}
             selectedNoteId={selectedNoteId}
+            editingPath={editingPath}
           />
         ))}
       </div>
@@ -294,10 +355,17 @@ interface TreeNodeItemProps {
   depth: number;
   isExpanded: boolean;
   isSelected: boolean;
+  isEditing: boolean;
+  editingName: string;
   onToggle: (node: TreeNode) => void;
   onClick: (node: TreeNode) => void;
+  onContextMenu: (e: React.MouseEvent, node: TreeNode) => void;
+  onEditingNameChange: (name: string) => void;
+  onRenameSubmit: (path: string) => void;
+  onRenameKeyDown: (e: React.KeyboardEvent, path: string) => void;
   expandedPaths: Set<string>;
   selectedNoteId: string | null;
+  editingPath: string | null;
 }
 
 function TreeNodeItem({
@@ -305,12 +373,28 @@ function TreeNodeItem({
   depth,
   isExpanded,
   isSelected,
+  isEditing,
+  editingName,
   onToggle,
   onClick,
+  onContextMenu,
+  onEditingNameChange,
+  onRenameSubmit,
+  onRenameKeyDown,
   expandedPaths,
   selectedNoteId,
+  editingPath,
 }: TreeNodeItemProps) {
   const paddingLeft = 8 + depth * 16;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -339,6 +423,7 @@ function TreeNodeItem({
         `}
         style={{ paddingLeft }}
         onClick={handleClick}
+        onContextMenu={(e) => onContextMenu(e, node)}
       >
         {node.isDirectory && (
           <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
@@ -363,7 +448,20 @@ function TreeNodeItem({
           )}
         </span>
 
-        <span className="truncate text-sm">{getDisplayName(node.name)}</span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingName}
+            onChange={(e) => onEditingNameChange(e.target.value)}
+            onKeyDown={(e) => onRenameKeyDown(e, node.path)}
+            onBlur={() => onRenameSubmit(node.path)}
+            className="flex-1 px-1 py-0 text-sm bg-bg-secondary border border-accent-primary rounded outline-none"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="truncate text-sm">{getDisplayName(node.name)}</span>
+        )}
       </div>
 
       {node.isDirectory && isExpanded && node.children && (
@@ -375,10 +473,17 @@ function TreeNodeItem({
               depth={depth + 1}
               isExpanded={expandedPaths.has(child.path)}
               isSelected={selectedNoteId === child.path}
+              isEditing={editingPath === child.path}
+              editingName={editingName}
               onToggle={onToggle}
               onClick={onClick}
+              onContextMenu={onContextMenu}
+              onEditingNameChange={onEditingNameChange}
+              onRenameSubmit={onRenameSubmit}
+              onRenameKeyDown={onRenameKeyDown}
               expandedPaths={expandedPaths}
               selectedNoteId={selectedNoteId}
+              editingPath={editingPath}
             />
           ))}
         </div>

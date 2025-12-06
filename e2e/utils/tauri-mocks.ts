@@ -143,12 +143,21 @@ export class VirtualFileSystem {
     );
     this.createFile(`${vaultPath}/.graphnotes/events.jsonl`, '');
 
-    // Create sample notes
+    // Create sample notes with various link styles for testing edge features
     const welcomeNote = `---
 id: welcome-note-id
 title: Welcome to GraphNotes
 created: ${new Date().toISOString()}
 modified: ${new Date().toISOString()}
+links:
+  - id: link-welcome-to-concepts
+    target: concepts-note-id
+    name: introduces
+    appearance:
+      direction: forward
+      colour: "#22c55e"
+      style: solid
+      thickness: normal
 ---
 
 # Welcome to GraphNotes
@@ -160,6 +169,8 @@ This is your test vault. Start by creating notes and linking them together with 
 - Press \`Cmd+N\` to create a new note
 - Type \`[[\` to create a link to another note
 - Press \`Cmd+K\` to search your notes
+
+Learn about [[Core Concepts]] to get started.
 `;
     this.createFile(`${vaultPath}/Welcome.md`, welcomeNote);
 
@@ -168,6 +179,15 @@ id: test-note-id
 title: Test Note
 created: ${new Date().toISOString()}
 modified: ${new Date().toISOString()}
+links:
+  - id: link-test-to-welcome
+    target: welcome-note-id
+    name: references
+    appearance:
+      direction: forward
+      colour: "#6366f1"
+      style: solid
+      thickness: normal
 ---
 
 # Test Note
@@ -181,6 +201,93 @@ This is a test note for E2E testing.
 Link to [[Welcome to GraphNotes]].
 `;
     this.createFile(`${vaultPath}/Test Note.md`, testNote);
+
+    // Add Core Concepts note with different edge styles
+    const conceptsNote = `---
+id: concepts-note-id
+title: Core Concepts
+created: ${new Date().toISOString()}
+modified: ${new Date().toISOString()}
+links:
+  - id: link-concepts-to-advanced
+    target: advanced-note-id
+    name: extends
+    appearance:
+      direction: forward
+      colour: "#3b82f6"
+      style: dashed
+      thickness: normal
+  - id: link-concepts-to-welcome
+    target: welcome-note-id
+    name: related to
+    appearance:
+      direction: bidirectional
+      colour: "#a855f7"
+      style: solid
+      thickness: thin
+---
+
+# Core Concepts
+
+This note explains the core concepts of GraphNotes.
+
+## Wikilinks
+
+Use [[double brackets]] to create links between notes.
+
+## Bidirectional Links
+
+Links work both ways - see [[Welcome to GraphNotes]] and [[Advanced Topics]].
+`;
+    this.createFile(`${vaultPath}/Core Concepts.md`, conceptsNote);
+
+    // Add Advanced Topics note with thick edges
+    const advancedNote = `---
+id: advanced-note-id
+title: Advanced Topics
+created: ${new Date().toISOString()}
+modified: ${new Date().toISOString()}
+links:
+  - id: link-advanced-to-test
+    target: test-note-id
+    name: contradicts
+    appearance:
+      direction: forward
+      colour: "#ef4444"
+      style: dotted
+      thickness: thick
+---
+
+# Advanced Topics
+
+Advanced features for power users.
+
+## Custom Edge Styles
+
+Edges can have different:
+- **Directions**: forward, backward, bidirectional
+- **Colors**: any hex color
+- **Styles**: solid, dashed, dotted
+- **Thickness**: thin, normal, thick
+
+See also [[Test Note]] for examples.
+`;
+    this.createFile(`${vaultPath}/Advanced Topics.md`, advancedNote);
+
+    // Add an orphan note (no links) for testing orphan detection
+    const orphanNote = `---
+id: orphan-note-id
+title: Orphan Note
+created: ${new Date().toISOString()}
+modified: ${new Date().toISOString()}
+---
+
+# Orphan Note
+
+This note has no links to other notes.
+It should appear in the graph as an isolated node.
+`;
+    this.createFile(`${vaultPath}/Orphan Note.md`, orphanNote);
   }
 
   /**

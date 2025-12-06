@@ -10,6 +10,7 @@ import {
   Hash,
   ChevronDown,
   ChevronRight,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -118,20 +119,29 @@ export function Sidebar() {
 
       {/* Super Tags */}
       <div className="px-3 py-3 border-t border-border-subtle">
-        <button
-          onClick={() => setSuperTagsExpanded(!superTagsExpanded)}
-          className="flex items-center gap-1 w-full text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2 hover:text-text-secondary"
-        >
-          {superTagsExpanded ? (
-            <ChevronDown className="w-3 h-3" />
-          ) : (
-            <ChevronRight className="w-3 h-3" />
-          )}
-          Super Tags
-          <span className="ml-auto text-[10px] font-normal">
-            {superTagList.length}
-          </span>
-        </button>
+        <div className="flex items-center gap-1 mb-2">
+          <button
+            onClick={() => setSuperTagsExpanded(!superTagsExpanded)}
+            className="flex items-center gap-1 flex-1 text-xs font-semibold text-text-tertiary uppercase tracking-wider hover:text-text-secondary"
+          >
+            {superTagsExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            Super Tags
+            <span className="ml-auto text-[10px] font-normal">
+              {superTagList.length}
+            </span>
+          </button>
+          <button
+            onClick={handleOpenSettings}
+            className="p-1 rounded hover:bg-bg-tertiary transition-colors"
+            title="Manage Super Tags"
+          >
+            <MoreHorizontal className="w-3 h-3 text-text-tertiary" />
+          </button>
+        </div>
         {superTagsExpanded && (
           <div className="space-y-0.5">
             {superTagList.length === 0 ? (

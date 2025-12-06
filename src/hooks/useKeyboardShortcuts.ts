@@ -25,8 +25,11 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
     toggleLinkPanel,
     setShowSettings,
     setShowQuickSearch,
+    setViewMode,
+    setShowDeleteConfirmation,
+    setShowFindInNote,
   } = useUIStore();
-  const { createNote, currentNote, saveNote } = useNoteStore();
+  const { createNote, currentNote, saveNote, deleteNote } = useNoteStore();
 
   // Store shortcuts with custom overrides
   const shortcutsRef = useRef<ShortcutDefinition[]>(DEFAULT_SHORTCUTS);
@@ -80,6 +83,32 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
           document.documentElement.classList.toggle('dark');
           break;
 
+        case 'goToGraph':
+          setViewMode('graph');
+          break;
+
+        case 'goToEditor':
+          setViewMode('editor');
+          break;
+
+        case 'goToSearch':
+          setShowQuickSearch(true);
+          break;
+
+        case 'deleteNote':
+          if (currentNote) {
+            setShowDeleteConfirmation(true);
+          }
+          break;
+
+        case 'findInNote':
+          setShowFindInNote(true);
+          break;
+
+        case 'findAndReplace':
+          setShowFindInNote(true);
+          break;
+
         // Editor actions are handled by Yoopta
         case 'bold':
         case 'italic':
@@ -116,10 +145,14 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions = {}) 
       toggleSidebar,
       toggleLinkPanel,
       setShowSettings,
+      setViewMode,
+      setShowDeleteConfirmation,
+      setShowFindInNote,
       currentVault,
       createNote,
       currentNote,
       saveNote,
+      deleteNote,
     ]
   );
 

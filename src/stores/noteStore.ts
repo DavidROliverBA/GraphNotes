@@ -21,6 +21,7 @@ interface NoteState {
   createNote: (vaultPath: string, filename: string, title?: string) => Promise<Note>;
   deleteNote: (filepath: string) => Promise<void>;
   renameNote: (oldPath: string, newPath: string) => Promise<void>;
+  duplicateNote: (filepath: string) => Promise<Note | null>;
   setCurrentNote: (note: Note | null) => void;
   updateCurrentNoteContent: (content: string) => void;
   clearError: () => void;
@@ -281,6 +282,94 @@ export const useNoteStore = create<NoteState>((set, get) => ({
         loading: false,
         error: err instanceof Error ? err.message : 'Failed to rename note',
       });
+    }
+  },
+
+  duplicateNote: async (filepath: string) => {
+    set({ loading: true, error: null });
+
+    try {
+      const { notes, notesList } = get();
+      const originalNote = notes.get(filepath);
+
+      if (!originalNote) {
+        // Try to load it first
+        const fileContent = await readFile(filepath);
+        const parsed = parseNote(fileContent.content, filepath);
+        if (!parsed) {
+          throw new Error('Failed to parse note');
+        }
+      }
+
+      const noteToClone = notes.get(filepath);
+      if (!noteToClone) {
+        throw new Error('Note not found');
+      }
+
+      // Generate new filename
+      const dir = filepath.substring(0, filepath.lastIndexOf('/'));
+      const oldName = filepath.split('/').pop()?.replace('.md', '') || 'note';
+
+      // Find a unique name
+      let copyNum = 1;
+      let newName = `${oldName} (copy)`;
+      let newPath = `${dir}/${newName}.md`;
+
+      while (notes.has(newPath) || notesList.some(n => n.filepath === newPath)) {
+        copyNum++;
+        newName = `${oldName} (copy ${copyNum})`;
+        newPath = `${dir}/${newName}.md`;
+      }
+
+      // Create new note with new ID and title
+      const newId = crypto.randomUUID();
+      const newCreated = new Date().toISOString();
+      const newNote: Note = {
+        ...noteToClone,
+        id: newId,
+        filepath: newPath,
+        frontmatter: {
+          ...noteToClone.frontmatter,
+          id: newId,
+          title: newName,
+          created: newCreated,
+          modified: newCreated,
+          links: [], // Clear links for the duplicate
+        },
+      };
+
+      // Serialize and save
+      const newContent = serializeNote(newNote);
+      await createFile(newPath, newContent);
+
+      // Update state
+      const newNotes = new Map(notes);
+      newNotes.set(newPath, newNote);
+
+      const newNotesList = [
+        ...notesList,
+        {
+          id: newNote.id,
+          title: newNote.frontmatter.title,
+          filepath: newPath,
+          created: newNote.frontmatter.created,
+          modified: newNote.frontmatter.modified,
+        },
+      ];
+
+      set({
+        notes: newNotes,
+        notesList: newNotesList,
+        loading: false,
+      });
+
+      return newNote;
+    } catch (err) {
+      set({
+        loading: false,
+        error: err instanceof Error ? err.message : 'Failed to duplicate note',
+      });
+      return null;
     }
   },
 
