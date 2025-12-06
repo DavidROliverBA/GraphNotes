@@ -56,7 +56,8 @@ interface EditorProps {
 }
 
 export function Editor({ note, onSave }: EditorProps) {
-  const editor = useMemo(() => createYooptaEditor(), []);
+  // Create a new editor instance when note changes to ensure clean state
+  const editor = useMemo(() => createYooptaEditor(), [note.id]);
   const { saving, updateContentWithAutoSave } = useNotes();
   const { createNote, notesList } = useNoteStore();
   const { currentVault } = useSettingsStore();
@@ -65,10 +66,18 @@ export function Editor({ note, onSave }: EditorProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const selectionBoxRef = useRef<HTMLDivElement>(null);
 
-  // Initialize content from note
-  const [localContent, setLocalContent] = useState<YooptaContentValue>(() =>
-    markdownToYoopta(note.content)
-  );
+  // Compute editor content from note - only recompute when note.id changes
+  // We intentionally exclude note.content from deps to avoid overwriting user edits
+  // when the autosave updates note.content
+  const editorContent = useMemo(() => markdownToYoopta(note.content), [note.id]);
+
+  // Track local changes for empty state detection and onChange handler
+  const [localContent, setLocalContent] = useState<YooptaContentValue>(editorContent);
+
+  // Reset local content when note changes (for the isEditorEmpty check)
+  useEffect(() => {
+    setLocalContent(editorContent);
+  }, [note.id]);
 
   // Wikilink suggestion state
   const [showWikilinkSuggestion, setShowWikilinkSuggestion] = useState(false);
@@ -76,15 +85,10 @@ export function Editor({ note, onSave }: EditorProps) {
   const [wikilinkPosition, setWikilinkPosition] = useState({ top: 0, left: 0 });
   const wikilinkStartRef = useRef<{ node: Node; offset: number } | null>(null);
 
-  // Initialize editor when note changes
+  // Track current note id
   useEffect(() => {
-    if (note.id !== currentNoteIdRef.current) {
-      currentNoteIdRef.current = note.id;
-      const content = markdownToYoopta(note.content);
-      setLocalContent(content);
-      editor.setEditorValue(content);
-    }
-  }, [note.id, note.content, editor]);
+    currentNoteIdRef.current = note.id;
+  }, [note.id]);
 
   // Handle content changes
   const handleChange = useCallback(
@@ -325,11 +329,12 @@ export function Editor({ note, onSave }: EditorProps) {
         <div className="max-w-3xl mx-auto">
           <div ref={selectionBoxRef} className={`yoopta-editor-wrapper ${isEditorEmpty ? 'is-empty' : ''}`} data-empty={isEditorEmpty}>
             <YooptaEditor
+              key={note.id}
               editor={editor}
               plugins={plugins}
               tools={TOOLS}
               marks={MARKS}
-              value={localContent}
+              value={editorContent}
               onChange={handleChange}
               autoFocus
               readOnly={false}
