@@ -42,7 +42,7 @@ A local-first, graph-based note-taking application with bidirectional linking, s
 | Layer | Technology |
 |-------|------------|
 | Desktop Runtime | Tauri 2.x |
-| Frontend | React 19 + TypeScript |
+| Frontend | React 18 + TypeScript |
 | Editor | Yoopta Editor |
 | Styling | Tailwind CSS |
 | Graph Visualization | React Flow (@xyflow/react) |
