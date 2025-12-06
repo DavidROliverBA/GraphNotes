@@ -176,12 +176,26 @@
   opacity: 0.7;
 }
 
-/* Placeholder */
-.yoopta-editor [data-placeholder]::before {
+/* Placeholder - hide all placeholders by default to prevent ghost text on new lines */
+.yoopta-editor [data-placeholder]::before,
+.yoopta-editor [data-slate-placeholder],
+.yoopta-editor [data-slate-placeholder="true"],
+.yoopta-editor .slate-placeholder {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Custom placeholder - only show when editor wrapper indicates empty state */
+.yoopta-editor-wrapper.is-empty .yoopta-editor [data-placeholder]::before,
+.yoopta-editor-wrapper[data-empty="true"] .yoopta-editor [data-placeholder]::before {
   content: attr(data-placeholder);
   color: var(--text-tertiary);
   pointer-events: none;
   position: absolute;
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* Selection */

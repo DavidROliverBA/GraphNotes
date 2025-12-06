@@ -3,8 +3,13 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    "./node_modules/@yoopta/**/*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',
+  safelist: [
+    { pattern: /^yoo-action-menu-/ },
+    { pattern: /^yoopta-/ },
+  ],
   theme: {
     extend: {
       colors: {

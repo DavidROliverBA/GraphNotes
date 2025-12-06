@@ -63,6 +63,7 @@ export function Editor({ note, onSave }: EditorProps) {
   const { setSelectedNoteId } = useUIStore();
   const currentNoteIdRef = useRef(note.id);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const selectionBoxRef = useRef<HTMLDivElement>(null);
 
   // Initialize content from note
   const [localContent, setLocalContent] = useState<YooptaContentValue>(() =>
@@ -295,6 +296,24 @@ export function Editor({ note, onSave }: EditorProps) {
     }
   }, [notesList, setSelectedNoteId]);
 
+  // Check if editor content is empty
+  const isEditorEmpty = useMemo(() => {
+    const blocks = Object.values(localContent);
+    if (blocks.length === 0) return true;
+    if (blocks.length > 1) return false;
+
+    // Check if the single block has empty content
+    const firstBlock = blocks[0];
+    if (!firstBlock?.value?.[0]) return true;
+
+    const firstElement = firstBlock.value[0] as { children?: Array<{ text?: string }> };
+    if (!firstElement.children) return true;
+
+    const children = firstElement.children;
+    return children.length === 0 ||
+           (children.length === 1 && children[0]?.text === '');
+  }, [localContent]);
+
   return (
     <div className="editor-container h-full flex flex-col bg-bg-primary">
       <EditorToolbar
@@ -304,17 +323,21 @@ export function Editor({ note, onSave }: EditorProps) {
       />
       <div ref={editorContainerRef} onClick={handleEditorClick} className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-3xl mx-auto">
-          <YooptaEditor
-            editor={editor}
-            plugins={plugins}
-            tools={TOOLS}
-            marks={MARKS}
-            value={localContent}
-            onChange={handleChange}
-            autoFocus
-            placeholder="Start writing..."
-            className="yoopta-editor"
-          />
+          <div ref={selectionBoxRef} className={`yoopta-editor-wrapper ${isEditorEmpty ? 'is-empty' : ''}`} data-empty={isEditorEmpty}>
+            <YooptaEditor
+              editor={editor}
+              plugins={plugins}
+              tools={TOOLS}
+              marks={MARKS}
+              value={localContent}
+              onChange={handleChange}
+              autoFocus
+              readOnly={false}
+              placeholder="Type / to open menu..."
+              selectionBoxRoot={selectionBoxRef}
+              className="yoopta-editor"
+            />
+          </div>
         </div>
       </div>
 
